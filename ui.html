@@ -1,0 +1,411 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>USI Modal — Upsellit Export</title>
+  <style>
+    html,
+    body {
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+    }
+
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 16px;
+      margin: 0 0 12px;
+      color: var(--figma-color-text);
+    }
+
+    h2 {
+      font-size: 13px;
+      margin: 18px 0 8px;
+      color: var(--figma-color-text);
+    }
+
+    p,
+    ul,
+    li,
+    #status,
+    .checkbox-copy p {
+      color: var(--figma-color-text-secondary);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ul {
+      margin: 0 0 12px 18px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 4px;
+    }
+
+    .row {
+      margin-bottom: 12px;
+    }
+
+    label,
+    summary {
+      color: var(--figma-color-text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    summary {
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font: inherit;
+      cursor: pointer;
+      margin-top: 8px;
+      background: var(--figma-color-bg-brand);
+      color: var(--figma-color-text-onbrand);
+      border: none;
+    }
+
+    button.secondary {
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+      border: 1px solid var(--figma-color-border);
+    }
+
+    input,
+    select {
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+      border: 1px solid var(--figma-color-border);
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--figma-color-border);
+      border-radius: 8px;
+      background: var(--figma-color-bg-secondary);
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      margin: 2px 0 0;
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+
+    .checkbox-copy {
+      min-width: 0;
+    }
+
+    .checkbox-copy label {
+      margin: 0 0 4px;
+      cursor: pointer;
+    }
+
+    .instructions {
+      border: 1px solid var(--figma-color-border);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--figma-color-bg-secondary);
+      margin-bottom: 16px;
+    }
+
+    .instructions code,
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      background: var(--figma-color-bg-tertiary);
+      color: var(--figma-color-text);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+
+    .example {
+      background: var(--figma-color-bg);
+      border: 1px solid var(--figma-color-border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--figma-color-text-secondary);
+      white-space: pre-line;
+    }
+
+    #status {
+      margin-top: 12px;
+      min-height: 18px;
+    }
+
+    * {
+      color: inherit;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <h1>Export Upsellit package</h1>
+
+  <details class="instructions">
+    <summary>Instructions</summary>
+    <p>
+      Select one top-level creative frame. The plugin exports
+      <code>display.html.js</code>, <code>display.css</code>, and optional
+      <code>assets/*</code> in a ZIP.
+    </p>
+
+    <h2>Recommended Figma structure</h2>
+    <ul>
+      <li>Top-level selected frame contains child frames/groups named <code>p1</code>, <code>p2</code>, and optional <code>p3</code>.</li>
+      <li>Optional shared child groups named <code>email</code> or <code>lead capture</code> export <code>usi_js.display_vars.email_html</code>.</li>
+      <li>Optional child group named <code>phone</code> exports <code>usi_js.display_vars.phone_html</code>.</li>
+      <li>Inside each page, name your CTA layer with <code>cta</code> or <code>button</code>.</li>
+      <li>Name disclaimer layers with <code>disclaimer</code>.</li>
+      <li>Name background layers with <code>background</code> or <code>bg</code>.</li>
+    </ul>
+
+    <h2>Text mapping inside each page</h2>
+    <ul>
+      <li>First text layer in visual order → <code>usi_head1</code></li>
+      <li>Second text layer in visual order → <code>usi_head2</code></li>
+      <li>Remaining text layers → <code>usi_text1</code>, <code>usi_text2</code>, etc.</li>
+    </ul>
+
+    <h2>Export modes</h2>
+    <ul>
+      <li><strong>Non-flatten:</strong> exports the detected background layer as a 3x PNG asset.</li>
+      <li><strong>Flatten:</strong> exports the whole selected <code>p1</code> artboard as a 3x PNG asset.</li>
+      <li>All PNG assets are converted to <code>.webp</code> before the ZIP is downloaded.</li>
+      <li><code>display.html.js</code> is automatically updated to reference the converted <code>.webp</code> asset paths.</li>
+    </ul>
+
+    <div class="example">Example layer structure:
+Selected Frame
+  p1
+  p2
+  p3
+  email
+  phone</div>
+  </details>
+
+  <div class="row">
+    <div class="checkbox-row">
+      <input id="flattenArtboard" type="checkbox" checked>
+      <div class="checkbox-copy">
+        <label for="flattenArtboard">Flatten whole artboard</label>
+        <p>
+          Off = export background layer only. On = export full artboard. Both modes export PNG first, then convert to WebP.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <button id="exportBtn">Export package</button>
+  <button id="cancelBtn" class="secondary">Close</button>
+
+  <div id="status"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const exportBtn = document.getElementById('exportBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const flattenArtboard = document.getElementById('flattenArtboard');
+
+    exportBtn.onclick = () => {
+      statusEl.textContent = 'Building package...';
+      parent.postMessage({
+        pluginMessage: {
+          type: 'export-package',
+          flattenArtboard: flattenArtboard.checked
+        }
+      }, '*');
+    };
+
+    cancelBtn.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
+    };
+
+    function downloadBlob(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function base64ToBlob(base64, mimeType) {
+      const byteChars = atob(base64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteNumbers[i] = byteChars.charCodeAt(i);
+      }
+      return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
+    }
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    function dataUrlToBase64(dataUrl) {
+      return String(dataUrl).split(',')[1] || '';
+    }
+
+    function loadImageFromBlob(blob) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = (err) => {
+          URL.revokeObjectURL(url);
+          reject(err);
+        };
+        img.src = url;
+      });
+    }
+
+    async function convertPngBase64ToWebpBase64(base64) {
+      const pngBlob = base64ToBlob(base64, 'image/png');
+      const img = await loadImageFromBlob(pngBlob);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Canvas 2D context unavailable.');
+      }
+
+      ctx.drawImage(img, 0, 0);
+
+      const webpBlob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('WebP conversion failed.'));
+              return;
+            }
+            resolve(blob);
+          },
+          'image/webp',
+          0.92
+        );
+      });
+
+      const dataUrl = await blobToDataUrl(webpBlob);
+      return dataUrlToBase64(dataUrl);
+    }
+
+    function replaceAssetRefsWithWebp(text, replacements) {
+      let out = text;
+      for (const [from, to] of replacements) {
+        out = out.split(from).join(to);
+      }
+      return out;
+    }
+
+    async function maybeConvertAssetsToWebp(files, shouldConvert) {
+      if (!shouldConvert) return files;
+
+      const replacements = [];
+      const convertedFiles = [];
+
+      for (const file of files) {
+        if (file.base64 && /\.png$/i.test(file.name)) {
+          const newName = file.name.replace(/\.png$/i, '.webp');
+          const newBase64 = await convertPngBase64ToWebpBase64(file.base64);
+          replacements.push([file.name, newName]);
+          convertedFiles.push({
+            name: newName,
+            base64: newBase64,
+            mime: 'image/webp'
+          });
+        } else {
+          convertedFiles.push(file);
+        }
+      }
+
+      return convertedFiles.map((file) => {
+        if (file.text != null && (file.name === 'display.html.js' || file.name === 'display.css')) {
+          return {
+            ...file,
+            text: replaceAssetRefsWithWebp(file.text, replacements)
+          };
+        }
+        return file;
+      });
+    }
+
+    window.onmessage = async (event) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      if (msg.type === 'error') {
+        statusEl.textContent = msg.message;
+        return;
+      }
+
+      if (msg.type === 'package-ready') {
+        try {
+          statusEl.textContent = 'Converting assets...';
+
+          const outputFiles = await maybeConvertAssetsToWebp(
+            msg.payload.files,
+            !!msg.payload.convertPngAssetsToWebp
+          );
+
+          const zip = new JSZip();
+
+          for (const file of outputFiles) {
+            if (file.text != null) {
+              zip.file(file.name, file.text);
+            } else if (file.base64) {
+              zip.file(file.name, file.base64, { base64: true });
+            }
+          }
+
+          statusEl.textContent = 'Creating ZIP...';
+          const blob = await zip.generateAsync({ type: 'blob' });
+          downloadBlob(blob, msg.payload.packageFileName || 'usi-upsellit-export.zip');
+          statusEl.textContent = 'Done. Your ZIP should be downloading.';
+        } catch (err) {
+          statusEl.textContent = err && err.message ? err.message : 'Failed to convert assets.';
+        }
+      }
+    };
+  </script>
+</body>
+</html>
