@@ -1,87 +1,149 @@
 <!doctype html>
-<html>
+<html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <title>USI Modal — Upsellit Export</title>
+  <title>USI Modal Semantic Export</title>
   <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     html,
     body {
+      margin: 0;
       background: var(--figma-color-bg);
       color: var(--figma-color-text);
+      font-family: Inter, system-ui, sans-serif;
     }
 
     body {
-      font-family: Inter, system-ui, sans-serif;
-      margin: 0;
-      padding: 16px;
+      padding: 12px;
     }
 
-    h1 {
-      font-size: 16px;
-      margin: 0 0 12px;
-      color: var(--figma-color-text);
-    }
-
-    h2 {
-      font-size: 13px;
-      margin: 18px 0 8px;
-      color: var(--figma-color-text);
-    }
-
+    h1,
+    h2,
+    h3,
     p,
     ul,
     li,
-    #status,
-    .checkbox-copy p {
-      color: var(--figma-color-text-secondary);
-      font-size: 12px;
-      line-height: 1.5;
+    pre {
+      margin: 0;
     }
 
-    p {
-      margin: 0 0 12px;
+    .shell {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
 
-    ul {
-      margin: 0 0 12px 18px;
-      padding: 0;
+    .banner-stack {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
     }
 
-    li {
-      margin: 0 0 4px;
-    }
-
-    .row {
-      margin-bottom: 12px;
-    }
-
-    label,
-    summary {
+    .banner {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(185, 28, 28, 0.24);
+      background: rgba(185, 28, 28, 0.12);
       color: var(--figma-color-text);
       font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .hero {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 16px;
+      border-radius: 16px;
+      background:
+        linear-gradient(135deg, rgba(22, 22, 22, 0.06), rgba(22, 22, 22, 0)),
+        var(--figma-color-bg-secondary);
+      border: 1px solid var(--figma-color-border);
+    }
+
+    .hero h1 {
+      font-size: 16px;
+      line-height: 1.3;
+    }
+
+    .hero p,
+    .panel p,
+    .panel li,
+    .meta-list,
+    .status {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--figma-color-text-secondary);
+    }
+
+    .panel,
+    details.panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--figma-color-border);
+      background: var(--figma-color-bg-secondary);
+    }
+
+    .panel h2,
+    details.panel summary {
+      font-size: 13px;
+    }
+
+    details.panel summary {
+      cursor: pointer;
+      color: var(--figma-color-text);
       font-weight: 600;
     }
 
-    label {
-      display: block;
-      margin-bottom: 6px;
+    .meta-list {
+      display: grid;
+      gap: 6px;
+      padding-left: 18px;
     }
 
-    summary {
-      cursor: pointer;
-      margin-bottom: 8px;
+    code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      background: var(--figma-color-bg-tertiary);
+      color: var(--figma-color-text);
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     button {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 8px;
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 14px;
       font: inherit;
       cursor: pointer;
-      margin-top: 8px;
+      transition: transform 120ms ease, opacity 120ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button.primary {
       background: var(--figma-color-bg-brand);
       color: var(--figma-color-text-onbrand);
-      border: none;
     }
 
     button.secondary {
@@ -90,178 +152,576 @@
       border: 1px solid var(--figma-color-border);
     }
 
-    input,
-    select {
-      background: var(--figma-color-bg);
-      color: var(--figma-color-text);
-      border: 1px solid var(--figma-color-border);
-    }
-
-    .checkbox-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 10px 12px;
-      border: 1px solid var(--figma-color-border);
-      border-radius: 8px;
-      background: var(--figma-color-bg-secondary);
-    }
-
-    .checkbox-row input[type="checkbox"] {
-      margin: 2px 0 0;
-      width: 16px;
-      height: 16px;
-      flex: 0 0 auto;
-    }
-
-    .checkbox-copy {
-      min-width: 0;
-    }
-
-    .checkbox-copy label {
-      margin: 0 0 4px;
-      cursor: pointer;
-    }
-
-    .instructions {
-      border: 1px solid var(--figma-color-border);
-      border-radius: 10px;
-      padding: 12px;
-      background: var(--figma-color-bg-secondary);
-      margin-bottom: 16px;
-    }
-
-    .instructions code,
-    code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 11px;
-      background: var(--figma-color-bg-tertiary);
-      color: var(--figma-color-text);
-      padding: 1px 4px;
-      border-radius: 4px;
-    }
-
-    .example {
-      background: var(--figma-color-bg);
-      border: 1px solid var(--figma-color-border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-top: 8px;
-      font-size: 12px;
-      line-height: 1.5;
-      color: var(--figma-color-text-secondary);
-      white-space: pre-line;
-    }
-
-    #status {
-      margin-top: 12px;
+    .status {
       min-height: 18px;
     }
 
-    * {
-      color: inherit;
-      box-sizing: border-box;
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .result-card {
+      padding: 9px;
+      border-radius: 10px;
+      background: var(--figma-color-bg);
+      border: 1px solid var(--figma-color-border);
+    }
+
+    .result-card strong {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    .result-card span {
+      font-size: 14px;
+      color: var(--figma-color-text);
+    }
+
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--figma-color-border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      color: var(--figma-color-text);
+      background: var(--figma-color-bg);
+    }
+
+    .component-search {
+      width: 100%;
+    }
+
+    .component-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .component-tab {
+      appearance: none;
+      border: 1px solid var(--figma-color-border);
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+
+    .component-tab:hover {
+      border-color: var(--figma-color-border-strong);
+    }
+
+    .component-tab.active {
+      background: var(--figma-color-bg-brand);
+      color: var(--figma-color-text-onbrand);
+      border-color: var(--figma-color-bg-brand);
+    }
+
+    .component-catalog {
+      display: grid;
+      gap: 6px;
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    .component-item {
+      padding: 8px;
+      border-radius: 10px;
+      background: var(--figma-color-bg);
+      border: 1px solid var(--figma-color-border);
+      font-size: 11px;
+      line-height: 1.35;
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .component-item strong {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--figma-color-text);
+    }
+
+    .component-preview {
+      width: 72px;
+      height: 56px;
+      border-radius: 8px;
+      border: 1px solid var(--figma-color-border);
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.06));
+      position: relative;
+      overflow: hidden;
+    }
+
+    .component-preview::before,
+    .component-preview::after {
+      content: "";
+      position: absolute;
+      display: block;
+    }
+
+    .component-preview::before {
+      inset: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .component-preview.modal_shell::before {
+      inset: 6px;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .component-preview.content_stack::before {
+      left: 10px;
+      right: 10px;
+      top: 10px;
+      bottom: 10px;
+      border-radius: 6px;
+      border: 1px dashed rgba(0, 0, 0, 0.2);
+    }
+
+    .component-preview.headline_block::before,
+    .component-preview.subtext_block::before,
+    .component-preview.eyebrow_block::before,
+    .component-preview.disclaimer_text::before {
+      left: 10px;
+      right: 10px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.75);
+      top: 16px;
+    }
+
+    .component-preview.subtext_block::before {
+      top: 18px;
+      height: 4px;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .component-preview.eyebrow_block::before,
+    .component-preview.disclaimer_text::before {
+      top: 22px;
+      height: 3px;
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .component-preview.primary_button::before,
+    .component-preview.thank_you_button::before,
+    .component-preview.no_thanks_button::before,
+    .component-preview.countdown_timer::before,
+    .component-preview.product_button::before,
+    .component-preview.close_control::before {
+      left: 12px;
+      right: 12px;
+      top: 18px;
+      height: 20px;
+      border-radius: 999px;
+      background: #202020;
+    }
+
+    .component-preview.no_thanks_button::before {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.24);
+    }
+
+    .component-preview.close_control::before {
+      left: 24px;
+      right: 24px;
+      top: 14px;
+      bottom: 14px;
+      height: auto;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    .component-preview.close_control::after {
+      width: 14px;
+      height: 14px;
+      left: 50%;
+      top: 50%;
+      margin-left: -7px;
+      margin-top: -7px;
+      background:
+        linear-gradient(45deg, transparent 44%, rgba(0, 0, 0, 0.6) 44%, rgba(0, 0, 0, 0.6) 56%, transparent 56%),
+        linear-gradient(-45deg, transparent 44%, rgba(0, 0, 0, 0.6) 44%, rgba(0, 0, 0, 0.6) 56%, transparent 56%);
+    }
+
+    .component-preview.product_grid::before {
+      inset: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0 30%, transparent 30% 35%, rgba(0, 0, 0, 0.12) 35% 65%, transparent 65% 70%, rgba(0, 0, 0, 0.12) 70% 100%);
+    }
+
+    .component-preview.product_card::before {
+      inset: 8px 14px;
+      border-radius: 6px;
+      background: #f1f1f1;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .component-preview.product_card::after,
+    .component-preview.product_image::before,
+    .component-preview.media_panel::before {
+      left: 18px;
+      right: 18px;
+      top: 12px;
+      height: 24px;
+      border-radius: 4px;
+      background: #d5d5d5;
+    }
+
+    .component-preview.product_title::before,
+    .component-preview.product_subtitle::before,
+    .component-preview.product_price::before,
+    .component-preview.email_input::before,
+    .component-preview.phone_input::before,
+    .component-preview.price_subtotal::before,
+    .component-preview.price_discount::before,
+    .component-preview.price_total::before {
+      left: 10px;
+      right: 10px;
+      top: 20px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.55);
+    }
+
+    .component-preview.product_subtitle::before {
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .component-preview.product_price::before,
+    .component-preview.price_total::before {
+      background: rgba(0, 0, 0, 0.8);
+    }
+
+    .component-preview.email_input::before,
+    .component-preview.phone_input::before {
+      top: 18px;
+      height: 20px;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+    }
+
+    .component-preview.price_table::before {
+      left: 10px;
+      right: 10px;
+      top: 12px;
+      bottom: 12px;
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18)) 0 0/100% 1px no-repeat,
+        linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18)) 0 50%/100% 1px no-repeat,
+        linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.18)) 0 100%/100% 1px no-repeat;
+    }
+
+    .component-preview.survey_block::before {
+      inset: 10px;
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)) 0 0/60% 4px no-repeat,
+        linear-gradient(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.14)) 0 12px/100% 10px no-repeat,
+        linear-gradient(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.14)) 0 28px/100% 10px no-repeat,
+        linear-gradient(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.14)) 0 44px/100% 10px no-repeat;
+      border: none;
+      border-radius: 6px;
+    }
+
+    .component-preview.copy_coupon::before {
+      inset: 16px 10px;
+      background:
+        linear-gradient(#ffffff, #ffffff) 0 0/62% 100% no-repeat,
+        linear-gradient(#1f1f1f, #1f1f1f) 100% 0/32% 100% no-repeat;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+    }
+
+    .component-preview.optin_component::before {
+      inset: 18px 10px;
+      background:
+        linear-gradient(#ffffff, #ffffff) 0 2px/12px 12px no-repeat,
+        linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)) 20px 6px/70% 4px no-repeat;
+      border: none;
+    }
+
+    .component-preview.progress_bar::before {
+      left: 10px;
+      right: 10px;
+      top: 24px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #222 0 55%, #d9d9d9 55% 100%);
+    }
+
+    .component-preview.sidebar_shell::before {
+      inset: 6px 18px;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .component-preview.bottom_bar_shell::before {
+      inset: 20px 6px 8px;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .component-meta {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .component-desc {
+      color: var(--figma-color-text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .component-role {
+      color: var(--figma-color-text-secondary);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .component-category {
+      color: var(--figma-color-text-secondary);
+      font-size: 10px;
+    }
+
+    .component-add {
+      padding: 10px 14px;
+      font-size: 11px;
+      white-space: nowrap;
+      background: var(--figma-color-bg-brand);
+      color: var(--figma-color-text-onbrand);
+      border: none;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .empty {
+      font-size: 12px;
+      color: var(--figma-color-text-secondary);
+    }
+
+    pre {
+      max-height: 220px;
+      overflow: auto;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--figma-color-border);
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+      font-size: 11px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
   </style>
 </head>
+
 <body>
-  <h1>Export Upsellit package</h1>
+  <div class="shell">
+    <div id="bannerStack" class="banner-stack"></div>
 
-  <details class="instructions">
-    <summary>Instructions</summary>
-    <p>
-      Select one top-level creative frame. The plugin exports
-      <code>display.html.js</code>, <code>display.css</code>, and optional
-      <code>assets/*</code> in a ZIP.
-    </p>
+    <section class="hero">
+      <h1>HTML/CSS Export</h1>
+      <p>
+        Export marketing frames built from the USI modal asset library into semantic, flattened, and preview-ready
+        packages that stay closer to the original mockup.
+      </p>
+      <button id="exportBtn" class="primary">Export Package</button>
+      <div id="status" class="status"></div>
 
-    <h2>Recommended Figma structure</h2>
-    <ul>
-      <li>Top-level selected frame contains child frames/groups named <code>p1</code>, <code>p2</code>, and optional <code>p3</code>.</li>
-      <li>Optional shared child groups named <code>email</code> or <code>lead capture</code> export <code>usi_js.display_vars.email_html</code>.</li>
-      <li>Optional child group named <code>phone</code> exports <code>usi_js.display_vars.phone_html</code>.</li>
-      <li>Inside each page, name your CTA layer with <code>cta</code> or <code>button</code>.</li>
-      <li>Name disclaimer layers with <code>disclaimer</code>.</li>
-      <li>Name background layers with <code>background</code> or <code>bg</code>.</li>
-    </ul>
+      <details class="panel">
+        <summary>Export details</summary>
+        <ul class="meta-list">
+          <li>Semantic output keeps reusable HTML structure while pulling layout, spacing, sizing, and typography from
+            the original frame bounds.</li>
+          <li>Flattened outputs reuse the same semantic sections, but absolutely position major regions like headline,
+            CTA, products, and summary to better match the mockup.</li>
+          <li>Preview HTML uses clean placeholder content, while exported JS keeps live product images, names, prices,
+            and totals dynamic.</li>
+          <li>Warnings and export issues now appear as red banners at the top of the plugin instead of in a separate
+            warnings panel.</li>
+          <li>The ZIP includes semantic HTML/CSS, flattened live-text, flattened text-baked, preview pages, exported
+            assets, and component metadata JSON.</li>
+        </ul>
+      </details>
+    </section>
 
-    <h2>Text mapping inside each page</h2>
-    <ul>
-      <li>First text layer in visual order → <code>usi_head1</code></li>
-      <li>Second text layer in visual order → <code>usi_head2</code></li>
-      <li>Remaining text layers → <code>usi_text1</code>, <code>usi_text2</code>, etc.</li>
-    </ul>
 
-    <h2>Export modes</h2>
-    <ul>
-      <li><strong>Non-flatten:</strong> exports the detected background layer as a 3x PNG asset.</li>
-      <li><strong>Flatten:</strong> exports the whole selected <code>p1</code> artboard as a 3x PNG asset.</li>
-      <li>All PNG assets are converted to <code>.webp</code> before the ZIP is downloaded.</li>
-      <li><code>display.html.js</code> is automatically updated to reference the converted <code>.webp</code> asset paths.</li>
-    </ul>
-
-    <div class="example">Example layer structure:
-Selected Frame
-  p1
-  p2
-  p3
-  email
-  phone</div>
-  </details>
-
-  <div class="row">
-    <div class="checkbox-row">
-      <input id="flattenArtboard" type="checkbox" checked>
-      <div class="checkbox-copy">
-        <label for="flattenArtboard">Flatten whole artboard</label>
-        <p>
-          Off = export background layer only. On = export full artboard. Both modes export PNG first, then convert to WebP.
-        </p>
+    <section class="panel">
+      <h2>Asset Components</h2>
+      <p>Add components to the selected frame or layer. Export uses those inserted components.</p>
+      <div class="actions">
+        <button id="createAssetSourceBtn" class="secondary" type="button">Create Asset Source Page</button>
       </div>
-    </div>
+      <details class="panel">
+        <summary>Using The Asset Collection</summary>
+        <ul class="meta-list">
+          <li>Select a frame, group, or layer where you want a modal component inserted.</li>
+          <li>Use the asset list below and click <code>Add</code> to insert pre-mapped components into that selection.
+          </li>
+          <li>Build the mockup from the provided pieces such as modal shell, headline, CTA, product grid, product card,
+            and price table.</li>
+          <li>Use <code>Create Asset Source Page</code> once to generate a dedicated page containing every component template.</li>
+          <li>Style those source components on that page; future <code>Add</code> actions clone from that page instead of the hardcoded defaults.</li>
+          <li>If nothing is selected during export, the plugin exports all top-level frames on the current page.</li>
+        </ul>
+      </details>
+      <div>
+        <div id="componentTabs" class="component-tabs"></div>
+        <input id="componentSearch" class="component-search" type="text" placeholder="Search components" />
+        <div id="componentCatalog" class="component-catalog"></div>
+      </div>
+    </section>
   </div>
-
-  <button id="exportBtn">Export package</button>
-  <button id="cancelBtn" class="secondary">Close</button>
-
-  <div id="status"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
     const statusEl = document.getElementById('status');
     const exportBtn = document.getElementById('exportBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const flattenArtboard = document.getElementById('flattenArtboard');
+    const createAssetSourceBtn = document.getElementById('createAssetSourceBtn');
+    const bannerStack = document.getElementById('bannerStack');
+    const componentCatalog = document.getElementById('componentCatalog');
+    const componentSearch = document.getElementById('componentSearch');
+    const componentTabs = document.getElementById('componentTabs');
+    let commonComponents = [];
+    let activeComponentTab = 'all';
+    const componentTabOrder = ['all', 'shell', 'layout', 'content', 'action', 'product', 'summary', 'form', 'utility'];
+    const componentTabLabels = {
+      all: 'All',
+      shell: 'Shells',
+      layout: 'Layout',
+      content: 'Copy',
+      action: 'Buttons',
+      product: 'Products',
+      summary: 'Summary',
+      form: 'Forms',
+      utility: 'Utility'
+    };
 
-    exportBtn.onclick = () => {
-      statusEl.textContent = 'Building package...';
-      parent.postMessage({
-        pluginMessage: {
-          type: 'export-package',
-          flattenArtboard: flattenArtboard.checked
+    function previewClassFor(component) {
+      return component.id;
+    }
+
+    function renderComponentTabs() {
+      componentTabs.innerHTML = '';
+      componentTabOrder.forEach((tabId) => {
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'component-tab' + (activeComponentTab === tabId ? ' active' : '');
+        tab.textContent = componentTabLabels[tabId] || tabId;
+        tab.setAttribute('data-tab-id', tabId);
+        componentTabs.appendChild(tab);
+      });
+    }
+
+    function renderComponentCatalog(filterText) {
+      componentCatalog.innerHTML = '';
+      const query = String(filterText || '').trim().toLowerCase();
+      commonComponents.filter((component) => {
+        const category = String(component.category || '').toLowerCase();
+        if (activeComponentTab !== 'all' && category !== activeComponentTab) {
+          return false;
         }
-      }, '*');
-    };
+        if (!query) return true;
+        return (
+          component.label.toLowerCase().includes(query) ||
+          component.role.toLowerCase().includes(query) ||
+          component.description.toLowerCase().includes(query) ||
+          category.includes(query)
+        );
+      }).sort((a, b) => {
+        const categoryCompare = String(a.category || '').localeCompare(String(b.category || ''));
+        if (categoryCompare !== 0) return categoryCompare;
+        return a.label.localeCompare(b.label);
+      }).forEach((component) => {
+        const item = document.createElement('div');
+        item.className = 'component-item';
+        item.innerHTML =
+          '<div class="component-preview ' + previewClassFor(component) + '"></div>' +
+          '<div class="component-meta">' +
+          '<strong>' + component.label + '</strong>' +
+          '<div class="component-role">' + component.role + '</div>' +
+          '<div class="component-category">' + component.category + '</div>' +
+          '<div class="component-desc">' + component.description + '</div>' +
+          '</div>' +
+          '<button class="component-add usi-add-component-btn" data-component-id="' + component.id + '" type="button">Add</button>';
+        componentCatalog.appendChild(item);
+      });
+      if (!componentCatalog.children.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'No components match the current filter.';
+        componentCatalog.appendChild(empty);
+      }
+    }
 
-    cancelBtn.onclick = () => {
-      parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
-    };
+    function initComponentCatalog() {
+      renderComponentTabs();
+      renderComponentCatalog('');
+      componentCatalog.onclick = (event) => {
+        const target = event.target;
+        if (!target || !target.classList || !target.classList.contains('usi-add-component-btn')) return;
+        const componentId = target.getAttribute('data-component-id');
+        if (!componentId) return;
+        statusEl.textContent = 'Adding asset component...';
+        parent.postMessage({
+          pluginMessage: {
+            type: 'insert-asset-component',
+            componentId: componentId
+          }
+        }, '*');
+      };
+      componentSearch.oninput = () => {
+        renderComponentCatalog(componentSearch.value);
+      };
+      componentTabs.onclick = (event) => {
+        const target = event.target;
+        if (!target || !target.classList || !target.classList.contains('component-tab')) return;
+        const tabId = target.getAttribute('data-tab-id') || 'all';
+        activeComponentTab = tabId;
+        renderComponentTabs();
+        renderComponentCatalog(componentSearch.value);
+      };
+    }
 
     function downloadBlob(blob, fileName) {
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
       URL.revokeObjectURL(url);
     }
 
     function base64ToBlob(base64, mimeType) {
       const byteChars = atob(base64);
       const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) {
+      for (let i = 0; i < byteChars.length; i += 1) {
         byteNumbers[i] = byteChars.charCodeAt(i);
       }
       return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
@@ -299,12 +759,11 @@ Selected Frame
     async function convertPngBase64ToWebpBase64(base64) {
       const pngBlob = base64ToBlob(base64, 'image/png');
       const img = await loadImageFromBlob(pngBlob);
-
       const canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth || img.width;
       canvas.height = img.naturalHeight || img.height;
-
       const ctx = canvas.getContext('2d');
+
       if (!ctx) {
         throw new Error('Canvas 2D context unavailable.');
       }
@@ -312,17 +771,13 @@ Selected Frame
       ctx.drawImage(img, 0, 0);
 
       const webpBlob = await new Promise((resolve, reject) => {
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              reject(new Error('WebP conversion failed.'));
-              return;
-            }
-            resolve(blob);
-          },
-          'image/webp',
-          0.92
-        );
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('WebP conversion failed.'));
+            return;
+          }
+          resolve(blob);
+        }, 'image/webp', 0.92);
       });
 
       const dataUrl = await blobToDataUrl(webpBlob);
@@ -330,27 +785,35 @@ Selected Frame
     }
 
     function replaceAssetRefsWithWebp(text, replacements) {
-      let out = text;
-      for (const [from, to] of replacements) {
-        out = out.split(from).join(to);
-      }
-      return out;
+      let output = text;
+      replacements.forEach(([from, to]) => {
+        output = output.split(from).join(to);
+      });
+      return output;
     }
 
-    async function maybeConvertAssetsToWebp(files, shouldConvert) {
-      if (!shouldConvert) return files;
+    function getBaseName(fileName) {
+      const parts = String(fileName || '').split('/');
+      return parts[parts.length - 1] || fileName;
+    }
 
+    async function convertPackageAssetsToWebp(files) {
       const replacements = [];
       const convertedFiles = [];
 
-      for (const file of files) {
+      for (const file of files || []) {
         if (file.base64 && /\.png$/i.test(file.name)) {
-          const newName = file.name.replace(/\.png$/i, '.webp');
-          const newBase64 = await convertPngBase64ToWebpBase64(file.base64);
-          replacements.push([file.name, newName]);
+          const nextName = file.name.replace(/\.png$/i, '.webp');
+          const nextBase64 = await convertPngBase64ToWebpBase64(file.base64);
+          replacements.push([file.name, nextName]);
+          const baseName = getBaseName(file.name);
+          const nextBaseName = getBaseName(nextName);
+          if (baseName && nextBaseName && baseName !== file.name) {
+            replacements.push([baseName, nextBaseName]);
+          }
           convertedFiles.push({
-            name: newName,
-            base64: newBase64,
+            name: nextName,
+            base64: nextBase64,
             mime: 'image/webp'
           });
         } else {
@@ -359,7 +822,7 @@ Selected Frame
       }
 
       return convertedFiles.map((file) => {
-        if (file.text != null && (file.name === 'display.html.js' || file.name === 'display.css')) {
+        if (typeof file.text === 'string') {
           return {
             ...file,
             text: replaceAssetRefsWithWebp(file.text, replacements)
@@ -369,43 +832,109 @@ Selected Frame
       });
     }
 
+    function renderBanners(messages) {
+      bannerStack.innerHTML = '';
+      if (!messages || !messages.length) {
+        bannerStack.style.display = 'none';
+        return;
+      }
+      bannerStack.style.display = 'flex';
+      messages.forEach((message) => {
+        const node = document.createElement('div');
+        node.className = 'banner';
+        node.textContent = message;
+        bannerStack.appendChild(node);
+      });
+    }
+
+    exportBtn.onclick = () => {
+      renderBanners([]);
+      statusEl.textContent = 'Analyzing selection...';
+      parent.postMessage({
+        pluginMessage: {
+          type: 'export-semantic'
+        }
+      }, '*');
+    };
+
+    createAssetSourceBtn.onclick = () => {
+      renderBanners([]);
+      statusEl.textContent = 'Preparing asset source page...';
+      parent.postMessage({
+        pluginMessage: {
+          type: 'create-asset-source-page'
+        }
+      }, '*');
+    };
+
     window.onmessage = async (event) => {
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
       if (msg.type === 'error') {
-        statusEl.textContent = msg.message;
+        renderBanners([msg.message || 'Export failed.']);
+        statusEl.textContent = msg.message || 'Export failed.';
+        return;
+      }
+
+      if (msg.type === 'component-catalog') {
+        commonComponents = Array.isArray(msg.payload) ? msg.payload : [];
+        renderComponentTabs();
+        renderComponentCatalog(componentSearch.value);
+        return;
+      }
+
+      if (msg.type === 'component-added') {
+        statusEl.textContent = msg.message || 'Added component.';
+        return;
+      }
+
+      if (msg.type === 'asset-source-page-ready') {
+        statusEl.textContent = msg.message || 'Asset source page ready.';
         return;
       }
 
       if (msg.type === 'package-ready') {
         try {
-          statusEl.textContent = 'Converting assets...';
+          const payload = msg.payload;
+          const report = payload.report || {};
+          const schema = payload.schema || {};
 
-          const outputFiles = await maybeConvertAssetsToWebp(
-            msg.payload.files,
-            !!msg.payload.convertPngAssetsToWebp
-          );
+          renderBanners(report.warnings || []);
 
+          statusEl.textContent = 'Converting PNG assets to WebP...';
+          const files = await convertPackageAssetsToWebp(payload.files || []);
+
+          statusEl.textContent = 'Creating ZIP...';
           const zip = new JSZip();
 
-          for (const file of outputFiles) {
-            if (file.text != null) {
+          for (const file of files) {
+            if (typeof file.text === 'string') {
               zip.file(file.name, file.text);
             } else if (file.base64) {
               zip.file(file.name, file.base64, { base64: true });
             }
           }
 
-          statusEl.textContent = 'Creating ZIP...';
           const blob = await zip.generateAsync({ type: 'blob' });
-          downloadBlob(blob, msg.payload.packageFileName || 'usi-upsellit-export.zip');
-          statusEl.textContent = 'Done. Your ZIP should be downloading.';
-        } catch (err) {
-          statusEl.textContent = err && err.message ? err.message : 'Failed to convert assets.';
+          downloadBlob(blob, payload.packageFileName || 'semantic-export.zip');
+
+          statusEl.textContent = 'Downloaded Export Package.';
+        } catch (error) {
+          renderBanners([error && error.message ? error.message : 'Failed to build ZIP package.']);
+          statusEl.textContent =
+            error && error.message ? error.message : 'Failed to build ZIP package.';
         }
       }
     };
+
+    initComponentCatalog();
+    parent.postMessage({
+      pluginMessage: {
+        type: 'get-component-catalog'
+      }
+    }, '*');
   </script>
 </body>
+
 </html>

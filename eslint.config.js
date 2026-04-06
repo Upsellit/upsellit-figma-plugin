@@ -10,11 +10,7 @@ module.exports = tseslint.config(
   // tseslint.configs.recommended instead.
   tseslint.configs.recommended,
   {
-    plugins: {
-      '@figma/figma-plugins': figmaPlugin,
-    },
     rules: {
-      ...figmaPlugin.configs.recommended.rules,
       // allow underscore-prefixing of unused variables
       '@typescript-eslint/no-unused-vars': [
         'error',
@@ -27,6 +23,21 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ['code.js', 'dist', 'eslint.config.js'],
+    files: ['main.ts', 'figma/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.json',
+        tsconfigRootDir: __dirname,
+      },
+    },
+    plugins: {
+      '@figma/figma-plugins': figmaPlugin,
+    },
+    rules: {
+      ...figmaPlugin.configs.recommended.rules,
+    },
+  },
+  {
+    ignores: ['**/*.js', 'dist', 'eslint.config.js', 'generated/**'],
   },
 )
