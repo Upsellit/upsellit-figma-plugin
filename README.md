@@ -1,219 +1,183 @@
 # Upsellit Modal Plugin
 
-A Figma plugin for building Upsellit modal campaigns using reusable asset components, and exporting them into multiple production-ready formats.
+A Figma plugin for building Upsellit modal campaigns from reusable asset components and exporting them into semantic and flattened campaign packages.
 
----
+## Designer
 
-## ✨ Features
+### Main workflow
 
-- Build campaigns using structured, reusable components
-- Export to multiple formats:
-  - Semantic HTML/CSS
-  - Flattened (live text) HTML/CSS/JS
-  - Flattened (text baked) HTML/CSS/JS
-  - Template library import data
-- Component-driven (no fragile layer guessing)
+1. Click `Create Asset Source Page`.
+2. The plugin creates or updates:
+   - `Upsellit Asset Source`
+   - `Upsellit Templates`
+   - `Upsellit Asset Tokens`
+3. Style the components on `Upsellit Asset Source`.
+4. Build campaign frames with the asset library in the plugin UI.
+5. Export the selected work.
 
----
+`Add` clones components from `Upsellit Asset Source` when that page exists, so designer edits on the source page become the default component styling for future inserts.
 
-## 🧠 How It Works
+### Export behavior
 
-Designers compose campaigns using predefined asset components.  
-The plugin reads these components (not raw layers) to generate accurate, deterministic exports.
+- If a frame is selected, that frame is exported.
+- If a group, section, component, or instance is selected, the plugin recursively finds child frames and exports those frames.
+- If nothing is selected, the plugin exports all frames it can find on the current page.
 
----
+### What gets exported
 
-## 🎨 Designer Workflow
+Each campaign folder includes:
 
-### 1. Initialize Project
-Click **`Create Asset Source Page`**
-
-This creates or updates:
-- `Upsellit Asset Source`
-- `Upsellit Templates`
-- `Upsellit Asset Tokens` (variables)
-
----
-
-### 2. Style Your Theme
-Customize components on **Upsellit Asset Source**:
-- Colors
-- Typography
-- Buttons
-- Borders
-- Incentive text
-
----
-
-### 3. Build Campaign
-- Use the plugin asset panel to insert components
-- Arrange and style inside frames
-- Keep each campaign page as a **frame**
-
----
-
-### 4. Export
-
-Export behavior:
-- **Frame selected** → exports that frame
-- **Group/section selected** → exports child frames
-- **Nothing selected** → exports all frames on page
-
----
-
-## 📦 Export Output
-
-Each export includes:
-
-- `index.html` (preview)
+- `index.html`
 - `semantic.html`
 - `flattened_live_text.html`
 - `flattened_text_baked.html`
-- `fallback-raw.html`
-- `devmode.html`
-- CSS + JS files
-- Images (mockups + backgrounds)
+- `css/semantic.css`
+- `css/flattened_live_text.css`
+- `css/flattened_text_baked.css`
+- `js/usi_js.js`
+- `js/flattened_text_baked.js`
+
+The export root also includes shared image folders:
+
+- `mockups/`
+- `live_text_images/`
+- `text_baked_images/`
+
+The frame `index.html` preview includes:
+
+- image gallery
+- iframe previews for semantic and flattened variants
+- flattened campaign CSS
+- flattened `usi_js`
+
+If multiple frames are exported, the root also includes:
+
+- `index.html`
+- `mockup_review.html`
 - `library_manifest.json`
 
----
+### Component rules
 
-## 🧩 Component Rules
+- Use the provided asset components for any exportable content.
+- Build each campaign inside frames.
+- Keep reusable styling on `Upsellit Asset Source`.
+- Use `Upsellit Templates` as a reference page generated from `library_manifest.json`.
 
-- Always use **provided asset components**
-- Avoid custom shapes/text for exportable content
-- Components carry metadata required for export
+## Developer
 
----
-
-## ⚙️ Developer Guide
-
-### Responsibilities
-
-- Build/manage Figma components
-- Export frames into HTML/CSS/JS + template data
-
----
-
-### 🛠 Build Commands
+### Build commands
 
 ```bash
 npm run build
 npm run lint
 ```
 
----
+### Architecture
 
-## 📁 Key Files
+- `main.ts`
+  - Plugin entrypoint
+  - UI message handling only
+- `ui.html`
+  - Plugin interface
 
-### Core
-- `main.ts` — Plugin entry point (UI messaging only)
-- `ui.html` — Plugin interface
+- `constants.ts`
+  - Shared component catalog
+  - Render metadata for each component
+- `types.ts`
+  - Shared types
 
-### Configuration
-- `constants.ts` — Component definitions + metadata
-- `types.ts` — Shared types
+- `figma/theme.ts`
+  - Variable and theme helpers
+- `figma/builders.ts`
+  - Asset component builders
+- `figma/import-library.ts`
+  - Builds `Upsellit Asset Source` and `Upsellit Templates`
+- `figma/export.ts`
+  - Figma extraction and asset export helpers
+- `figma/shared.ts`
+  - Shared Figma utilities
+- `figma/index.ts`
+  - Barrel exports
 
-### Figma Layer
-- `figma/index.ts` — Module barrel
-- `figma/theme.ts` — Theme + variables
-- `figma/builders.ts` — Component builders
-- `figma/import-library.ts` — Source/template page creation
-- `figma/export.ts` — Node extraction + export logic
+- `analysis/index.ts`
+  - Component-driven AST and schema assembly
 
-### Processing Pipeline
-- `analysis/index.ts` — Converts frames → structured AST
-- `render/semantic.ts` — Semantic HTML output
-- `render/flattened.ts` — Flattened output
-- `render/devmode.ts` — Dev preview
-- `render/preview-pages.ts` — Preview pages
+- `render/semantic.ts`
+  - Semantic campaign output
+- `render/flattened.ts`
+  - Flattened HTML/CSS/JS output
+- `render/preview-pages.ts`
+  - Frame and root preview pages
+- `render/devmode.ts`
+  - Helpers for extracting flattened campaign CSS for preview pages
+- `render/index.ts`
+  - Barrel exports
 
-### Packaging
-- `packaging/index.ts` — Final export assembly
+- `packaging/index.ts`
+  - Final export assembly
+  - ZIP/package structure
 
-### Template System
-- `library_manifest.json` — Source data
-- `generated/template-library.ts` — Generated output (do not edit)
-- `scripts/generate-template-library.mjs` — Build script
+- `scripts/generate-template-library.mjs`
+  - Converts `library_manifest.json` into generated runtime data
+- `generated/template-library.ts`
+  - Generated file consumed by the plugin
+- `library_manifest.json`
+  - Source input for template-library generation
 
----
+### Output model
 
-## 🏗 Architecture Overview
+The plugin is component-driven. It does not depend on generic layer heuristics anymore.
 
-main.ts        → Controller (UI → logic)  
-figma/         → Reads/writes Figma data  
-analysis/      → Builds structured model  
-render/        → Generates output files  
-packaging/     → Bundles final export  
-scripts/       → Build-time utilities  
+The main export variants are:
 
----
+- Semantic
+  - structured HTML and CSS based on inserted components
+- Flattened Live Text
+  - semantic-style HTML with major regions positioned to match the design
+  - live text and live interactive elements where allowed
+- Flattened Text Baked
+  - uses the baked background image with only the required live HTML remaining
 
-## 📤 Output Formats
+### Adding a new component
 
-### Semantic
-- Clean, structured HTML + CSS
+In most cases, adding a new component means editing four places:
 
-### Flattened (Live Text)
-- Background image + positioned live text/components
+1. `types.ts`
+   - add the component id and role if needed
+2. `constants.ts`
+   - add the component definition to `COMMON_COMPONENTS`
+   - keep render metadata here
+3. `figma/builders.ts`
+   - add the builder used by the asset source page and `Add`
+4. `render/flattened.ts` or `render/semantic.ts`
+   - only if the component needs custom export behavior
 
-### Flattened (Text Baked)
-- More text baked into image, minimal live elements
+Rule of thumb:
 
-### Dev Mode
-- Preview with extracted runtime CSS/JS
+- Define what the component is in `constants.ts`
+- Define how it is inserted in `figma/builders.ts`
+- Define custom export behavior only when the shared render metadata is not enough
 
----
+### Template library updates
 
-## 🔄 Updating Template Library
+To refresh template-library data:
 
-1. Export templates from Figma
-2. Replace `library_manifest.json`
+1. Export the latest template set from the plugin.
+2. Replace `library_manifest.json` in the repo root.
 3. Run:
-   ```bash
-   npm run build
-   ```
-4. This regenerates:
-   - `generated/template-library.ts`
 
----
+```bash
+npm run build
+```
 
-## ➕ Adding a New Component
+That regenerates `generated/template-library.ts`.
 
-1. Define component in `types.ts`
-2. Add to `COMMON_COMPONENTS` in `constants.ts`
-3. Implement builder in `figma/`
-4. Update:
-   - `analysis/` (if schema changes)
-   - `render/` (if custom output needed)
-5. Run:
-   ```bash
-   npm run build && npm run lint
-   ```
+### Generated files
 
----
-
-## 📏 Best Practices
-
-- Keep render metadata near component definitions
-- Prefer cloning from source page over hardcoded styles
-- Avoid special-case rendering unless necessary
-- Maintain stable metadata for deterministic exports
-
----
-
-## ⚠️ Generated Files
-
-Do **not** manually edit:
+Do not edit:
 
 - `generated/template-library.ts`
 
 Safe to replace:
-- `library_manifest.json` (input source)
 
----
-
-## 🧾 Notes
-
-- Export manifests are compact JSON
-- System is designed for consistency and repeatability
-- Component-driven approach ensures reliable output
+- `library_manifest.json`

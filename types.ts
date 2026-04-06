@@ -246,29 +246,3 @@ export type CommonComponentDefinition = {
     };
   };
 };
-
-export type ClientComponentInstance = {
-  componentId: ComponentTemplateId;
-  sourceFrameName: string;
-  sourceFolder: string;
-  nodeId: string;
-  nodeName: string;
-  text?: string;
-  bounds: NodeBounds;
-  layout: NodeLayout;
-  style: NodeStyle;
-};
-
-export type ClientComponentCatalogEntry = {
-  id: ComponentTemplateId;
-  label: string;
-  role: ExportRole;
-  category: CommonComponentDefinition['category'];
-  description: string;
-  render: CommonComponentDefinition['render'];
-  usageCount: number;
-  templateCount: number;
-  templates: string[];
-  defaultInstance: ClientComponentInstance;
-  instances: ClientComponentInstance[];
-};

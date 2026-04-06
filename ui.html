@@ -546,8 +546,8 @@
     <section class="hero">
       <h1>HTML/CSS Export</h1>
       <p>
-        Export marketing frames built from the USI modal asset library into semantic, flattened, and preview-ready
-        packages that stay closer to the original mockup.
+        Export Upsellit modal frames built from the asset library into semantic and flattened campaign packages with
+        preview pages and reusable template data.
       </p>
       <button id="exportBtn" class="primary">Export Package</button>
       <div id="status" class="status"></div>
@@ -559,12 +559,11 @@
             the original frame bounds.</li>
           <li>Flattened outputs reuse the same semantic sections, but absolutely position major regions like headline,
             CTA, products, and summary to better match the mockup.</li>
-          <li>Preview HTML uses clean placeholder content, while exported JS keeps live product images, names, prices,
-            and totals dynamic.</li>
-          <li>Warnings and export issues now appear as red banners at the top of the plugin instead of in a separate
-            warnings panel.</li>
-          <li>The ZIP includes semantic HTML/CSS, flattened live-text, flattened text-baked, preview pages, exported
-            assets, and component metadata JSON.</li>
+          <li>Frame <code>index.html</code> files include image galleries, iframe previews, and the flattened campaign CSS and <code>usi_js</code> used for implementation review.</li>
+          <li>Exported image assets are grouped into root folders for <code>mockups</code>, <code>live_text_images</code>, and <code>text_baked_images</code>.</li>
+          <li>Preview HTML uses clean placeholder content, while exported JS keeps live product images, names, prices, and totals dynamic where those components exist.</li>
+          <li>Warnings and export issues appear as red banners at the top of the plugin.</li>
+          <li>Select a frame to export one campaign, select a group/section to export child frames, or export with nothing selected to include all frames on the current page.</li>
         </ul>
       </details>
     </section>
@@ -572,7 +571,7 @@
 
     <section class="panel">
       <h2>Asset Components</h2>
-      <p>Add components to the selected frame or layer. Export uses those inserted components.</p>
+      <p>Add components to the selected frame or layer. Export uses those inserted components directly.</p>
       <div class="actions">
         <button id="createAssetSourceBtn" class="secondary" type="button">Create Asset Source Page</button>
       </div>
@@ -580,13 +579,12 @@
         <summary>Using The Asset Collection</summary>
         <ul class="meta-list">
           <li>Select a frame, group, or layer where you want a modal component inserted.</li>
-          <li>Use the asset list below and click <code>Add</code> to insert pre-mapped components into that selection.
-          </li>
-          <li>Build the mockup from the provided pieces such as modal shell, headline, CTA, product grid, product card,
-            and price table.</li>
-          <li>Use <code>Create Asset Source Page</code> once to generate a dedicated page containing every component template.</li>
-          <li>Style those source components on that page; future <code>Add</code> actions clone from that page instead of the hardcoded defaults.</li>
-          <li>If nothing is selected during export, the plugin exports all top-level frames on the current page.</li>
+          <li>Use the asset list below and click <code>Add</code> to insert pre-mapped components into that selection.</li>
+          <li>Use <code>Create Asset Source Page</code> to create or update <code>Upsellit Asset Source</code>, <code>Upsellit Templates</code>, and the shared token collection.</li>
+          <li>Style components on <code>Upsellit Asset Source</code>; future <code>Add</code> actions clone from that page instead of using builder defaults.</li>
+          <li><code>Upsellit Templates</code> is generated from <code>library_manifest.json</code> and acts as a reusable campaign reference page.</li>
+          <li>Build exportable campaigns from the provided components such as shells, copy blocks, buttons, products, summaries, and form elements.</li>
+          <li>During export, grouped frames stay separate; the plugin recursively finds child frames instead of flattening the whole group into one image.</li>
         </ul>
       </details>
       <div>

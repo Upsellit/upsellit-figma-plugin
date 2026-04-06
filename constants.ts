@@ -226,7 +226,7 @@ export const COMMON_COMPONENTS: CommonComponentDefinition[] = [
 		region: "main",
 		kind: "optin",
 		fallbackText: "Yes, send me updates and offers.",
-		flattened: { liveText: false, textBaked: false }
+		flattened: { liveText: true, textBaked: true }
 	}),
 	component("countdown_timer", "Countdown Timer", "countdown", "Urgency timer display.", "utility", {
 		htmlTag: "div",
