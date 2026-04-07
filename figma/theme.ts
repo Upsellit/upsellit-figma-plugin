@@ -3,7 +3,6 @@
 import { ThemeVariableSnapshot } from '../types';
 
 export const ASSET_LIBRARY_PAGE_NAME = 'Upsellit Asset Source';
-export const TEMPLATES_PAGE_NAME = 'Upsellit Templates';
 export const ASSET_VARIABLE_COLLECTION_NAME = 'Upsellit Asset Tokens';
 
 export type AssetThemeVariables = {

@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { AnyNode, ExportFile, NodeBounds, NodeStyle, SizingMode } from '../types';
+import { AnyNode, ExportFile, NodeBounds, NodeStyle, SizingMode, NormalizedNode } from '../types';
 import { sanitizeFilePart } from '../utils/string';
 import { getNodeChildren, getPluginMeta, setPluginMeta } from './shared';
+import { flattenTree, normalizeNode } from '../analysis/index';
 
 export function getYearMonth(): string {
   const now = new Date();
@@ -293,7 +294,18 @@ export async function exportFlattenedBackgroundVariant(
   if (!rootNode || typeof rootNode.clone !== 'function') return null;
   const clone = rootNode.clone();
   const pathMaps = buildPathMaps(rootNode);
-  const hidePaths = uniqueIds(dynamicNodeIds.concat(alwaysHiddenNodeIds))
+  const disclaimerIds = new Set<string>();
+  const inputIds = new Set<string>();
+  const normalizedRoot = normalizeNode(rootNode);
+  flattenTree(normalizedRoot).forEach(function(node: NormalizedNode) {
+    if (node.componentOverride === 'disclaimer_text') {
+      disclaimerIds.add(node.id);
+    }
+    if (node.componentOverride === 'email_input' || node.componentOverride === 'phone_input') {
+      inputIds.add(node.id);
+    }
+  });
+  const hidePaths = uniqueIds(dynamicNodeIds.concat(alwaysHiddenNodeIds).concat(Array.from(disclaimerIds)))
     .map(function (id) {
       return pathMaps.idToPath.get(id) || '';
     })
@@ -303,13 +315,40 @@ export async function exportFlattenedBackgroundVariant(
     const cloneMaps = buildPathMaps(clone);
     for (const path of hidePaths) {
       const node = cloneMaps.pathToNode.get(path);
-      if (node) node.visible = false;
+      if (!node) continue;
+      if ('opacity' in node && typeof node.opacity === 'number') {
+        node.opacity = 0;
+      } else {
+        node.visible = false;
+      }
     }
 
     if (removeAllText) {
       walkScenePaths(clone, function (node) {
-        if (node.type === 'TEXT') node.visible = false;
+        if (node.type !== 'TEXT') return;
+        if ('opacity' in node && typeof node.opacity === 'number') {
+          node.opacity = 0;
+        } else {
+          node.visible = false;
+        }
       });
+
+      // Hide all subcomponents for background-only export
+      function hideChildren(node: AnyNode) {
+        if ('children' in node && Array.isArray(node.children)) {
+          for (const child of node.children) {
+            if (child.type === 'TEXT') continue; // Skip text nodes to keep them visible
+            if (inputIds.has(child.id)) continue; // Keep input backgrounds visible
+            if ('opacity' in child && typeof child.opacity === 'number') {
+              child.opacity = 0;
+            } else {
+              child.visible = false;
+            }
+            hideChildren(child);
+          }
+        }
+      }
+      hideChildren(clone);
     }
 
     return await exportNodeImage(clone, fileName);

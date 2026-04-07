@@ -6,11 +6,10 @@ import {
   NodeBounds,
   NormalizedNode,
 } from '../types';
-import { escapeHtml, escapeTemplateString, formatCss, formatHtml } from '../utils/string';
+import { escapeHtml, escapeTemplateString, formatHtml } from '../utils/string';
 import { COMPONENT_BY_ID, COMPONENT_BY_ROLE } from '../constants';
 import {
   cssDeclarations,
-  getProductionScaleForFrame,
   pxToEm,
   scalePx,
   textTransformFromCase,
@@ -66,23 +65,7 @@ function componentText(node: NormalizedNode, definition?: CommonComponentDefinit
   return definition && definition.render.fallbackText ? definition.render.fallbackText : '';
 }
 
-function shouldRenderInFlattened(
-  definition: CommonComponentDefinition | undefined,
-  hideVisibleText: boolean
-): boolean {
-  if (!definition) return false;
-  return hideVisibleText ? definition.render.flattened.textBaked : definition.render.flattened.liveText;
-}
-
-function shouldRenderAsFlattenedHtml(
-  definition: CommonComponentDefinition | undefined,
-  hideVisibleText: boolean
-): boolean {
-  if (!definition) return false;
-  return definition.role !== 'disclaimer' && shouldRenderInFlattened(definition, hideVisibleText);
-}
-
-function renderExplicitComponentNode(node: NormalizedNode): string {
+function renderExplicitComponentNode(node: NormalizedNode, hideVisibleText: boolean): string {
   const definition = componentDefinitionForNode(node);
   if (!definition) return '';
   const tag = definition.render.htmlTag;
@@ -90,8 +73,13 @@ function renderExplicitComponentNode(node: NormalizedNode): string {
   const text = componentText(node, definition);
   const kind = definition.render.kind;
 
+  if (kind === 'container') {
+    return '<' + tag + ' class="' + className + '"></' + tag + '>';
+  }
+
   if (kind === 'input') {
-    return '<label class="' + className + '"><span class="usi_field_label">' + escapeHtml(node.name || definition.label) + '</span><input class="usi_field_input" type="' + escapeHtml(definition.render.inputType || 'text') + '" placeholder="' + escapeHtml(text) + '" /></label>';
+    const placeholder = hideVisibleText ? '' : escapeHtml(text);
+    return '<label class="' + className + '"><span class="usi_field_label">' + escapeHtml(node.name || definition.label) + '</span><input class="usi_field_input" type="' + escapeHtml(definition.render.inputType || 'text') + '" placeholder="' + placeholder + '" /></label>';
   }
   if (kind === 'survey') {
     const children = node.children.filter(function (child) { return !child.ignored && child.visible; });
@@ -135,13 +123,13 @@ function renderExtraRegionNodes(
   (function walk(node: NormalizedNode) {
     if (node.ignored || excludedIds.indexOf(node.id) !== -1) return;
     const definition = componentDefinitionForNode(node);
+    if (definition && definition.id === 'content_stack') return;
     const shouldRenderNode =
       !!definition &&
-      definition.render.region === region &&
-      (hideVisibleText == null || shouldRenderAsFlattenedHtml(definition, hideVisibleText));
+      definition.render.region === region;
 
     if (shouldRenderNode) {
-      rendered.push(renderExplicitComponentNode(node));
+      rendered.push(renderExplicitComponentNode(node, hideVisibleText || false));
       return;
     }
     for (let index = 0; index < node.children.length; index += 1) {
@@ -166,6 +154,23 @@ function combineBounds(nodes: Array<NormalizedNode | undefined>): NodeBounds | u
     bottom = Math.max(bottom, filtered[index].bounds.y + filtered[index].bounds.height);
   }
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function nodeContains(parent: NormalizedNode, child: NormalizedNode): boolean {
+  for (let index = 0; index < parent.children.length; index += 1) {
+    const current = parent.children[index];
+    if (current === child) return true;
+    if (nodeContains(current, child)) return true;
+  }
+  return false;
+}
+
+function topLevelNodes(nodes: NormalizedNode[], root: NormalizedNode): NormalizedNode[] {
+  return nodes.filter(function (node) {
+    return !nodes.some(function (other) {
+      return other !== node && nodeContains(other, node);
+    });
+  });
 }
 
 function flattenedTextDeclarations(
@@ -244,7 +249,7 @@ export function renderFlattenedHtml(
   imageFileName: string,
   hideVisibleText: boolean
 ): FlattenedVariant {
-  const frameScale = getProductionScaleForFrame(root.bounds);
+  const frameScale = 1;
   const scaledRootWidth = scalePx(root.bounds.width, frameScale) || root.bounds.width;
   const scaledRootHeight = scalePx(root.bounds.height, frameScale) || root.bounds.height;
   const headlineNode = findNormalizedNodeById(root, analysis.headlineNodeId);
@@ -294,17 +299,13 @@ export function renderFlattenedHtml(
   })();
   const subtextText = analysis.schema.subtext || (subtextNode ? collectText(subtextNode) : '');
   const ctaLabel = analysis.schema.primaryCta && analysis.schema.primaryCta.label ? analysis.schema.primaryCta.label : ctaNode ? collectText(ctaNode) : 'Redeem Now';
-  const eyebrowDefinition = eyebrowNode ? componentDefinitionForNode(eyebrowNode) : COMPONENT_BY_ROLE.eyebrow;
-  const headlineDefinition = headlineNode ? componentDefinitionForNode(headlineNode) : COMPONENT_BY_ROLE.headline;
-  const subtextDefinition = subtextNode ? componentDefinitionForNode(subtextNode) : COMPONENT_BY_ROLE.subtext;
-  const showEyebrowInVariant = hideVisibleText ? false : shouldRenderAsFlattenedHtml(eyebrowDefinition, hideVisibleText);
-  const showHeadlineInVariant = hideVisibleText ? false : shouldRenderAsFlattenedHtml(headlineDefinition, hideVisibleText);
-  const showSubtextInVariant = hideVisibleText ? false : shouldRenderAsFlattenedHtml(subtextDefinition, hideVisibleText);
+  const showEyebrowInVariant = hideVisibleText ? false : !!eyebrowText;
+  const showHeadlineInVariant = hideVisibleText ? false : !!headlineText;
+  const showSubtextInVariant = hideVisibleText ? false : !!subtextText;
   const eyebrowClass = showEyebrowInVariant ? 'usi_eyebrow' : 'usi_eyebrow usi_sr_only';
   const headlineClass = showHeadlineInVariant ? 'usi_headline' : 'usi_headline usi_sr_only';
   const subtextClass = showSubtextInVariant ? 'usi_subtext' : 'usi_subtext usi_sr_only';
-  const ctaDefinition = ctaNode ? componentDefinitionForNode(ctaNode) : COMPONENT_BY_ROLE.cta;
-  const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta) && shouldRenderInFlattened(ctaDefinition, hideVisibleText);
+  const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta);
   const ctaInnerHtml = showCtaInVariant ? escapeHtml(ctaLabel) : '';
   const summaryTitle = resolveSummaryTitle(summaryNode);
   const hasProducts = !!analysis.schema.products.length && !!productCardNodes.length && !!productBounds;
@@ -313,11 +314,12 @@ export function renderFlattenedHtml(
   const hasPhoneInput = hasInsertedComponent(root, 'phone_input');
   const hasSurvey = hasInsertedComponent(root, 'survey_block');
   const hasCoupon = hasInsertedComponent(root, 'copy_coupon');
-  const hasOptin = hasInsertedComponent(root, 'optin_component') && shouldRenderInFlattened(COMPONENT_BY_ID.optin_component, hideVisibleText);
+  const hasOptin = hasInsertedComponent(root, 'optin_component');
   const hasCountdown = hasInsertedComponent(root, 'countdown_timer');
   const hasProgress = hasInsertedComponent(root, 'progress_bar');
   const hasMediaPanel = hasInsertedComponent(root, 'media_panel');
   const hasSecondaryCta = hasInsertedComponent(root, 'no_thanks_button');
+  const hasDisclaimer = hasInsertedComponent(root, 'disclaimer_text');
   const productGap = productCardNodes.length > 1 && productBounds
     ? productCardNodes.slice(1).reduce(function (sum, card, index) {
         const previous = productCardNodes[index];
@@ -361,10 +363,37 @@ export function renderFlattenedHtml(
   const flattenedExtraMainHtml = renderExtraRegionNodes(root, 'main', flattenedExcludedIds, hideVisibleText);
   const flattenedExtraAsideHtml = renderExtraRegionNodes(root, 'aside', flattenedExcludedIds, hideVisibleText);
   const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, 'utility', flattenedExcludedIds, hideVisibleText);
-  const previewContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + escapeHtml(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + escapeHtml(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + escapeHtml(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + escapeHtml(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + previewProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + previewSummaryHtml;
-  const runtimeContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + escapeHtml(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + escapeHtml(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + escapeHtml(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + escapeHtml(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + runtimeProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + runtimeSummaryHtml;
-  const formattedPreviewContentHtml = formatHtml(previewContentHtml).trim();
-  const formattedRuntimeContentHtml = formatHtml(runtimeContentHtml).trim();
+  // Explicitly render missing components to ensure they appear in flattened HTML
+  const progressBarNodes = findNodesByRole(root, 'progress', 0.35);
+  const surveyNodes = topLevelNodes(findNodesByRole(root, 'survey', 0.35), root);
+  const emailInputNodes = findNodesByRole(root, 'email-input', 0.35);
+  const phoneInputNodes = findNodesByRole(root, 'phone-input', 0.35);
+  const copyCouponNodes = findNodesByRole(root, 'copy-coupon', 0.35);
+  const noThanksNodes = findNodesByRole(root, 'secondary-cta', 0.35);
+  const mediaPanelNodes = findNodesByRole(root, 'image', 0.35);
+  const disclaimerNodes = findNodesByRole(root, 'disclaimer', 0.35);
+  const allExtraComponentNodes = [
+    ...progressBarNodes,
+    ...surveyNodes,
+    ...emailInputNodes,
+    ...phoneInputNodes,
+    ...copyCouponNodes,
+    ...noThanksNodes,
+    ...mediaPanelNodes,
+    ...disclaimerNodes,
+  ];
+  const extraComponentsHtml = allExtraComponentNodes.map(node => renderExplicitComponentNode(node, hideVisibleText)).join('');
+  // Generate positioning CSS for extra components
+  const extraComponentsCss = allExtraComponentNodes.map(function (node) {
+    const definition = componentDefinitionForNode(node);
+    if (!definition) return '';
+    const className = definition.render.className;
+    return '.' + className + ' {\n  position: absolute;\n  left: ' + toPercent(node.bounds.x - root.bounds.x, root.bounds.width) + ';\n  top: ' + toPercent(node.bounds.y - root.bounds.y, root.bounds.height) + ';\n  width: ' + toPercent(node.bounds.width, root.bounds.width) + ';\n  ' + flattenedBoxDeclarations(node, frameScale) + '\n}\n';
+  }).join('');
+  const previewContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + escapeHtml(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + escapeHtml(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + escapeHtml(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + escapeHtml(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + extraComponentsHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + previewProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + previewSummaryHtml;
+  const runtimeContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + escapeHtml(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + escapeHtml(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + escapeHtml(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + escapeHtml(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + extraComponentsHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + runtimeProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + runtimeSummaryHtml;
+  //const formattedPreviewContentHtml = previewContentHtml;
+  const formattedRuntimeContentHtml = runtimeContentHtml;
   const html = '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Legacy flattened export</title><link rel="stylesheet" href="css/' + (hideVisibleText ? 'flattened_text_baked.css' : 'flattened_live_text.css') + '" /></head><body><div id="usi_container"><div id="usi_display" role="alertdialog" aria-label="' + escapeHtml(headlineText || 'Preview') + '" aria-modal="true" class="usi_display usi_show_css usi_shadow" style="width:' + scaledRootWidth + 'px;height:' + scaledRootHeight + 'px;"><div id="usi_content">' + previewContentHtml + '</div><div id="usi_background"><img src="' + escapeHtml(imageFileName) + '" aria-hidden="true" alt="' + escapeHtml(headlineText || 'Preview') + '" id="usi_background_img" style="width:100%;height:100%;" /></div></div></div></body></html>';
   const productCardCss = productCardNodes.map(function (card, index) {
     const imageNode = findNormalizedNodeById(card, findImageNodeId(card));
@@ -372,8 +401,7 @@ export function renderFlattenedHtml(
     return '.usi_product' + (index + 1) + ' {\n  width: 100%;\n  max-width: 100%;\n  min-width: 0;\n}\n' + imageRule;
   }).join('');
   const componentCss = [
-    hasEmailInput ? '.usi_field {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
-    hasPhoneInput ? '' : '',
+    (hasEmailInput || hasPhoneInput) ? '.usi_field {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
     hasSurvey ? '.usi_survey {\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n}\n.usi_survey_options {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_survey_option {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
     hasCoupon ? '.usi_coupon {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.75em;\n  align-items: center;\n}\n.usi_coupon_code {\n  padding: 0.75em 1em;\n  border: 1px solid #222;\n  background: #fff;\n  font-weight: 700;\n}\n.usi_coupon_button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
     hasOptin ? '.usi_optin {\n  display: flex;\n  gap: 0.625em;\n  align-items: center;\n}\n.usi_optin_input {\n  appearance: none;\n  -webkit-appearance: none;\n  width: 1.125em;\n  height: 1.125em;\n  border: 1px solid currentColor;\n  background: #fff;\n  flex: 0 0 auto;\n}\n.usi_optin_label {\n  display: inline-block;\n}\n' : '',
@@ -381,11 +409,12 @@ export function renderFlattenedHtml(
     hasProgress ? '.usi_progress {\n  width: 100%;\n  height: 0.75em;\n  background: #ddd;\n  border-radius: 999px;\n  overflow: hidden;\n}\n.usi_progress_fill {\n  width: 55%;\n  height: 100%;\n  background: #222;\n}\n' : '',
     hasMediaPanel ? '.usi_media_panel {\n  width: 100%;\n  min-height: 8em;\n  background: #d9d9d9;\n}\n' : '',
     hasSecondaryCta ? '.usi_secondary_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
-  ].join('');
+      hasDisclaimer ? '.usi_disclaimer {\n  margin: 0;\n  font-size: 0.875em;\n  color: #666;\n  line-height: 1.4;\n}\n' : '',
+].join('');
   const textRegionCss = [
-    headlineText && headlineNode && mainBounds ? '.usi_headline {\n  position: absolute;\n  left: ' + toPercent(headlineNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(headlineNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(headlineNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(headlineNode, frameScale, { 'white-space': 'pre-wrap' }) + ';\n}\n' : '',
-    eyebrowText && eyebrowNode && mainBounds ? '.usi_eyebrow {\n  position: absolute;\n  left: ' + toPercent(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(eyebrowNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(eyebrowNode, frameScale, { 'white-space': 'pre-wrap' }) + ';\n}\n' : '',
-    subtextText && subtextNode && mainBounds ? '.usi_subtext {\n  position: absolute;\n  left: ' + toPercent(subtextNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(subtextNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(subtextNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(subtextNode, frameScale, { 'white-space': 'pre-wrap' }) + ';\n}\n' : '',
+    headlineText && headlineNode && mainBounds ? '.usi_headline {\n  position: absolute;\n  left: ' + toPercent(headlineNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(headlineNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(headlineNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(headlineNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
+    eyebrowText && eyebrowNode && mainBounds ? '.usi_eyebrow {\n  position: absolute;\n  left: ' + toPercent(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(eyebrowNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(eyebrowNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
+    subtextText && subtextNode && mainBounds ? '.usi_subtext {\n  position: absolute;\n  left: ' + toPercent(subtextNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(subtextNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(subtextNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(subtextNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
   ].join('');
   const css = '* { box-sizing: border-box; }\nhtml { font-size: 16px; }\nbody { margin: 0; background: #efefef; font-family: Inter, Arial, sans-serif; }\n' +
     '.usi_display { left:50%; margin-left:-' + String(scaledRootWidth / 2) + 'px; top:0px; width:' + scaledRootWidth + 'px; height:' + scaledRootHeight + 'px; }\n' +
@@ -396,19 +425,30 @@ export function renderFlattenedHtml(
     'button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { cursor:pointer; }\n' +
     '.usi_main {\n  position: absolute;\n  left: ' + (hasProducts || hasSummary ? (mainBounds ? toPercent(mainBounds.x - root.bounds.x, root.bounds.width) : '0%') : '0%') + ';\n  top: ' + (hasProducts || hasSummary ? (mainBounds ? toPercent(mainBounds.y - root.bounds.y, root.bounds.height) : '0%') : '0%') + ';\n  width: ' + (hasProducts || hasSummary ? (mainBounds ? toPercent(mainBounds.width, root.bounds.width) : '100%') : '100%') + ';\n  height: ' + (!hasProducts && !hasSummary ? '100%' : (mainBounds ? toPercent(mainBounds.height, root.bounds.height) : '100%')) + ';\n}\n' +
     textRegionCss +
-    (hasProducts ? '.usi_products {\n  position: absolute;\n  left: ' + (productBounds ? toPercent(productBounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (productBounds ? toPercent(productBounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (productBounds ? toPercent(productBounds.width, root.bounds.width) : '100%') + ';\n  min-height: ' + (productBounds ? toPercent(productBounds.height, root.bounds.height) : '0%') + ';\n  display: grid;\n  grid-template-columns: repeat(' + ((productBounds && productBounds.width < productBounds.height * 0.9) ? 1 : gridColumns) + ', minmax(0, 1fr));\n  gap: ' + (productBounds && productGap ? toPercent(productGap, productBounds.width) : '2%') + ';\n  align-items: start;\n}\n.usi_product {\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  padding: 0.9em;\n  min-width: 0;\n  ' + (flattenedBoxDeclarations(firstProductCard, frameScale, { width: '100%', 'max-width': '100%', 'min-width': '0' }) || 'width: 100%; max-width: 100%;') + ';\n}\n.usi_product_image {\n  position: relative;\n  display: block;\n  width: 100%;\n  overflow: hidden;\n  ' + (flattenedBoxDeclarations(productImageNode, frameScale, { width: '100%' }) || 'width: 100%;') + ';\n}\n.usi_product_image img {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n.usi_product_body {\n  display: flex;\n  flex-direction: column;\n  gap: 0.35em;\n  min-width: 0;\n}\n.usi_product_title {\n  margin: 0;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(productTitleNode, frameScale, { 'white-space': 'pre-wrap', 'background-color': 'transparent', border: 'none' }) || 'font-weight: 700;') + ';\n}\n.usi_product_price {\n  margin: 0;\n  ' + (flattenedTextDeclarations(productPriceNode, frameScale) || '') + ';\n}\n.usi_product_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  ' + (flattenedBoxDeclarations(productButtonNode, frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center', color: '#ffffff' }) || 'border: 1px solid currentColor; background: transparent; color:#ffffff;') + ';\n}\n' + productCardCss : '') +
-    (hasSummary ? '.usi_summary {\n  position: absolute;\n  left: ' + (summaryNode ? toPercent(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (summaryNode ? toPercent(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : '59%') + ';\n  width: ' + (summaryNode ? toPercent(summaryNode.bounds.width, root.bounds.width) : '76%') + ';\n  padding: 1em;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (flattenedBoxDeclarations(summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_summary_title {\n  margin: 0 0 0.5em;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(summaryNode, frameScale, { 'font-size': '1em', 'font-weight': 700, 'white-space': 'pre-wrap' }) || 'font-weight: 700; font-size: 1em;') + ';\n}\n.usi_summary_row {\n  display: grid;\n  grid-template-columns: 1fr auto;\n  gap: 1em;\n  align-items: start;\n  font-size: 1em;\n}\n.usi_price {\n  ' + (flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_discount {\n  ' + (flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_new_price {\n  ' + (flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_label, .usi_value {\n  font-size: 1em;\n}\n.usi_new_price .usi_value, .usi_discount .usi_value, .usi_new_price strong, .usi_discount strong {\n  font-weight: 700;\n}\n' : '') +
+    (hasProducts ? '.usi_products {\n  position: absolute;\n  left: ' + (productBounds ? toPercent(productBounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (productBounds ? toPercent(productBounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (productBounds ? toPercent(productBounds.width, root.bounds.width) : '100%') + ';\n  min-height: ' + (productBounds ? toPercent(productBounds.height, root.bounds.height) : '0%') + ';\n  display: grid;\n  grid-template-columns: repeat(' + ((productBounds && productBounds.width < productBounds.height * 0.9) ? 1 : gridColumns) + ', minmax(0, 1fr));\n  gap: ' + (productBounds && productGap ? toPercent(productGap, productBounds.width) : '2%') + ';\n  align-items: start;\n}\n.usi_product {\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  padding: 0.9em;\n  min-width: 0;\n  ' + (flattenedBoxDeclarations(firstProductCard, frameScale, { width: '100%', 'max-width': '100%', 'min-width': '0' }) || 'width: 100%; max-width: 100%;') + '\n}\n.usi_product_image {\n  position: relative;\n  display: block;\n  width: 100%;\n  overflow: hidden;\n  ' + (flattenedBoxDeclarations(productImageNode, frameScale, { width: '100%' }) || 'width: 100%;') + '\n}\n.usi_product_image img {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n.usi_product_body {\n  display: flex;\n  flex-direction: column;\n  gap: 0.35em;\n  min-width: 0;\n}\n.usi_product_title {\n  margin: 0;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(productTitleNode, frameScale, { 'white-space': 'pre-wrap', 'background-color': 'transparent', border: 'none' }) || 'font-weight: 700;') + '\n}\n.usi_product_price {\n  margin: 0;\n  ' + (flattenedTextDeclarations(productPriceNode, frameScale) || '') + '\n}\n.usi_product_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  ' + (flattenedBoxDeclarations(productButtonNode, frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center', color: '#ffffff' }) || 'border: 1px solid currentColor; background: transparent; color:#ffffff;') + '\n}\n' + productCardCss : '') +
+    (hasSummary ? '.usi_summary {\n  position: absolute;\n  left: ' + (summaryNode ? toPercent(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (summaryNode ? toPercent(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : '59%') + ';\n  width: ' + (summaryNode ? toPercent(summaryNode.bounds.width, root.bounds.width) : '76%') + ';\n  padding: 1em;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (flattenedBoxDeclarations(summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_summary_title {\n  margin: 0 0 0.5em;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(summaryNode, frameScale, { 'font-size': '1em', 'font-weight': 700, 'white-space': 'pre-wrap' }) || 'font-weight: 700; font-size: 1em;') + '\n}\n.usi_summary_row {\n  display: grid;\n  grid-template-columns: 1fr auto;\n  gap: 1em;\n  align-items: start;\n  font-size: 1em;\n}\n.usi_price {\n  ' + (flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_discount {\n  ' + (flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_new_price {\n  ' + (flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_label, .usi_value {\n  font-size: 1em;\n}\n.usi_new_price .usi_value, .usi_discount .usi_value, .usi_new_price strong, .usi_discount strong {\n  font-weight: 700;\n}\n' : '') +
     componentCss +
+    extraComponentsCss +
     '.usi_submitbutton {\n  position: absolute;\n  left: ' + (ctaNode ? toPercent(ctaNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (ctaNode ? toPercent(ctaNode.bounds.y - root.bounds.y, root.bounds.height) : '77%') + ';\n  width: ' + (ctaNode ? toPercent(ctaNode.bounds.width, root.bounds.width) : '76%') + ';\n  min-height: ' + (ctaNode ? toPercent(ctaNode.bounds.height, root.bounds.height) : '15.5%') + ';\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n' + (flattenedBoxDeclarations(ctaNode, frameScale, { display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'background-color': ctaNode && ctaNode.style.background ? ctaNode.style.background : '#1f1f1f', color: ctaNode && ctaNode.style.color ? ctaNode.style.color : '#ffffff', 'text-align': ctaNode && ctaNode.style.textAlign ? ctaNode.style.textAlign : 'center' })) + '}\n.usi_sr_only {\n  position: absolute !important;\n  width: 1px !important;\n  height: 1px !important;\n  padding: 0 !important;\n  margin: -1px !important;\n  overflow: hidden !important;\n  clip: rect(0, 0, 0, 0) !important;\n  white-space: nowrap !important;\n  border: 0 !important;\n}\n';
-  const js = buildPriceRuntimeSetup(hasSummary) + 'usi_js.click_cta = () => {\n  try {\n    usi_js.deep_link();\n  } catch (err) {\n    usi_commons.report_error(err);\n  }\n};\n\nusi_js.display_vars.p1_html = `\n' + escapeTemplateString(formattedRuntimeContentHtml) + '\n`;\n';
+  const js = buildPriceRuntimeSetup(hasSummary) + 'usi_js.click_cta = () => {\n  try {\n    usi_js.deep_link();\n  } catch (err) {\n    usi_commons.report_error(err);\n  }\n};\n\nusi_js.display_vars.p1_html = `\n' + escapeTemplateString(formatFlattenedHtml(formattedRuntimeContentHtml)) + '\n`;\n';
   return {
-    html: formatHtml(html),
-    css: formatCss(css),
+    html: html,
+    css: css,
     imageFileName: imageFileName,
     js: js,
-    contentHtml: formattedPreviewContentHtml,
-    runtimeContentHtml: formattedRuntimeContentHtml,
+    contentHtml: previewContentHtml,
+    runtimeContentHtml: runtimeContentHtml,
   };
+}
+
+function formatFlattenedHtml(html: string): string {
+  if (!html) return '';
+  return formatHtml(html)
+    .split('\n')
+    .map(function (line) {
+      return line ? '\t' + line : line;
+    })
+    .join('\n');
 }
 
 export function buildUsiJsFile(
@@ -420,10 +460,8 @@ export function buildUsiJsFile(
   const assignments = pages
     .map(function (page) {
       return (
-        'usi_js.display_vars.' +
-        page.key +
-        '_html = `\n' +
-        escapeTemplateString(page.variant.runtimeContentHtml || page.variant.contentHtml) +
+        'usi_js.display_vars.' +  page.key + '_html = `\n' +
+        escapeTemplateString(formatFlattenedHtml(page.variant.runtimeContentHtml || page.variant.contentHtml)) +
         '\n`;\n'
       );
     })

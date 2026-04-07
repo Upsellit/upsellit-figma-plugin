@@ -38,27 +38,6 @@ figma.ui.onmessage = async function (msg) {
         }
         return;
     }
-    if (msg.type === 'create-asset-source-page') {
-        try {
-            const assetPage = await (0, index_1.ensureAssetSourcePage)();
-            const templatesPage = await (0, index_1.ensureTemplatesPageFromLibrary)();
-            figma.ui.postMessage({
-                type: 'asset-source-page-ready',
-                message: 'Opened ' +
-                    String(assetPage.name || 'asset source page') +
-                    ' and ' +
-                    String(templatesPage.name || 'templates page') +
-                    '.',
-            });
-        }
-        catch (error) {
-            figma.ui.postMessage({
-                type: 'error',
-                message: error && error.message ? String(error.message) : 'Failed to create asset source page.',
-            });
-        }
-        return;
-    }
     if (msg.type === 'export-semantic') {
         const roots = (0, index_1.getExportRoots)(figma.currentPage.selection, figma.currentPage);
         if (!roots.length) {
@@ -87,10 +66,8 @@ figma.ui.onmessage = async function (msg) {
 "constants": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.COMPONENT_BY_ROLE = exports.COMPONENT_BY_ID = exports.COMPONENT_ROLE_MAP = exports.COMMON_COMPONENTS = exports.THREE_X_THRESHOLD = exports.PRODUCTION_SCALE = exports.MOBILE_WIDTH_THRESHOLD = void 0;
+exports.COMPONENT_BY_ROLE = exports.COMPONENT_BY_ID = exports.COMPONENT_ROLE_MAP = exports.COMMON_COMPONENTS = exports.MOBILE_WIDTH_THRESHOLD = void 0;
 exports.MOBILE_WIDTH_THRESHOLD = 560;
-exports.PRODUCTION_SCALE = 3;
-exports.THREE_X_THRESHOLD = 1200;
 function component(id, label, role, description, category, render) {
     return {
         id: id,
@@ -371,7 +348,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.walkScenePaths = exports.validateSelection = exports.setPluginMeta = exports.paintToCss = exports.hasImageFill = exports.getYearMonth = exports.getSizingMode = exports.getPluginMeta = exports.getPaddingValue = exports.getNodeChildren = exports.getExportRoots = exports.getExportPageNodes = exports.getBounds = exports.firstVisiblePaint = exports.extractTextStyle = exports.extractNodeText = exports.extractNodeStyle = exports.exportNodeImage = exports.exportMockupPng = exports.exportFlattenedBackgroundVariant = exports.buildPathMaps = exports.buildNodeIndex = exports.buildExportPackageName = exports.buildExportBaseName = exports.attachProductAssets = void 0;
 __exportStar(require("./theme"), exports);
 __exportStar(require("./builders"), exports);
-__exportStar(require("./import-library"), exports);
 var export_1 = require("./export");
 Object.defineProperty(exports, "attachProductAssets", { enumerable: true, get: function () { return export_1.attachProductAssets; } });
 Object.defineProperty(exports, "buildExportBaseName", { enumerable: true, get: function () { return export_1.buildExportBaseName; } });
@@ -403,7 +379,7 @@ Object.defineProperty(exports, "walkScenePaths", { enumerable: true, get: functi
 "use strict";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ASSET_VARIABLE_COLLECTION_NAME = exports.TEMPLATES_PAGE_NAME = exports.ASSET_LIBRARY_PAGE_NAME = void 0;
+exports.ASSET_VARIABLE_COLLECTION_NAME = exports.ASSET_LIBRARY_PAGE_NAME = void 0;
 exports.ensureAssetThemeVariables = ensureAssetThemeVariables;
 exports.getAssetThemeSnapshot = getAssetThemeSnapshot;
 exports.applyThemeSnapshot = applyThemeSnapshot;
@@ -412,7 +388,6 @@ exports.bindUniformRadius = bindUniformRadius;
 exports.applyThemeFont = applyThemeFont;
 exports.applyThemeText = applyThemeText;
 exports.ASSET_LIBRARY_PAGE_NAME = 'Upsellit Asset Source';
-exports.TEMPLATES_PAGE_NAME = 'Upsellit Templates';
 exports.ASSET_VARIABLE_COLLECTION_NAME = 'Upsellit Asset Tokens';
 function hexToRgba(hex) {
     const normalized = hex.replace('#', '');
@@ -839,7 +814,7 @@ async function buildAssetComponentNode(componentId) {
                     componentId === 'bottom_bar_shell' ? 'Bottom Bar Shell' :
                         'Modal Shell';
             if (componentId === 'sidebar_shell')
-                frame.resize(320, 660);
+                frame.resize(320, 800);
             else if (componentId === 'bottom_bar_shell')
                 frame.resize(1280, 180);
             else
@@ -1053,7 +1028,8 @@ async function buildAssetComponentNode(componentId) {
     }
     return node;
 }
-function findAssetLibraryPage() {
+async function findAssetLibraryPage() {
+    await figma.loadAllPagesAsync();
     for (let index = 0; index < figma.root.children.length; index += 1) {
         const child = figma.root.children[index];
         if ((0, shared_1.isPageNode)(child) && child.name === theme_2.ASSET_LIBRARY_PAGE_NAME)
@@ -1061,10 +1037,11 @@ function findAssetLibraryPage() {
     }
     return undefined;
 }
-function findAssetSourceComponentNode(componentId) {
-    const page = findAssetLibraryPage();
+async function findAssetSourceComponentNode(componentId) {
+    const page = await findAssetLibraryPage();
     if (!page)
         return undefined;
+    await page.loadAsync();
     const stack = page.children.slice();
     while (stack.length) {
         const current = stack.shift();
@@ -1083,7 +1060,7 @@ function findAssetSourceComponentNode(componentId) {
     return undefined;
 }
 async function createAssetComponentInstance(componentId) {
-    const sourceNode = findAssetSourceComponentNode(componentId);
+    const sourceNode = await findAssetSourceComponentNode(componentId);
     const node = sourceNode ? sourceNode.clone() : await buildAssetComponentNode(componentId);
     const selection = figma.currentPage.selection;
     const selectedNode = selection.length ? selection[0] : null;
@@ -1193,523 +1170,6 @@ function applyComponentMeta(node, componentId) {
     });
 }
 },
-"figma/import-library": function(require, module, exports) {
-"use strict";
-/* eslint-disable @typescript-eslint/no-explicit-any */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ensureTemplatesPageFromLibrary = ensureTemplatesPageFromLibrary;
-exports.ensureAssetSourcePage = ensureAssetSourcePage;
-const constants_1 = require("../constants");
-const template_library_1 = require("../generated/template-library");
-const builders_1 = require("./builders");
-const theme_1 = require("./theme");
-const shared_1 = require("./shared");
-function findAssetLibraryPage() {
-    for (let index = 0; index < figma.root.children.length; index += 1) {
-        const child = figma.root.children[index];
-        if ((0, shared_1.isPageNode)(child) && child.name === theme_1.ASSET_LIBRARY_PAGE_NAME)
-            return child;
-    }
-    return undefined;
-}
-function getTextDescendants(node) {
-    const found = [];
-    const stack = [node];
-    while (stack.length) {
-        const current = stack.shift();
-        if (!current)
-            continue;
-        if (current.type === 'TEXT') {
-            found.push(current);
-            continue;
-        }
-        if ('children' in current && Array.isArray(current.children)) {
-            for (let index = 0; index < current.children.length; index += 1) {
-                stack.push(current.children[index]);
-            }
-        }
-    }
-    return found;
-}
-async function applyThemeToExistingComponent(node, theme) {
-    const meta = (0, shared_1.getPluginMeta)(node);
-    const componentId = meta.exportComponent;
-    if (!componentId)
-        return;
-    if (componentId === 'modal_shell' ||
-        componentId === 'sidebar_shell' ||
-        componentId === 'bottom_bar_shell') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.background2);
-    }
-    if (componentId === 'content_stack' ||
-        componentId === 'media_panel' ||
-        componentId === 'product_card') {
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.background2);
-    }
-    if (componentId === 'product_image') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.background1);
-    }
-    if (componentId === 'price_table') {
-        if ('fills' in node) {
-            node.fills = [(0, shared_1.makeSolidFill)('#EAEAEA')];
-            (0, theme_1.bindColorVariable)(node, 'fills', theme.fontColor);
-        }
-        if ('cornerRadius' in node)
-            node.cornerRadius = 0;
-    }
-    if (componentId === 'primary_button' ||
-        componentId === 'thank_you_button') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.button1);
-        const textNodes = getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.fontColor });
-        }
-    }
-    if (componentId === 'product_button') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.button2);
-        const textNodes = getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.fontColor });
-        }
-    }
-    if (componentId === 'no_thanks_button') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.highlight);
-        const textNodes = getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.fontColor });
-        }
-    }
-    if (componentId === 'divider') {
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.background1);
-    }
-    if (componentId === 'email_input' || componentId === 'phone_input') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'strokes', theme.background2);
-        const textNodes = getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.background1 });
-        }
-    }
-    if (componentId === 'optin_component') {
-        const textNodes = getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.fontColor });
-        }
-        if ('children' in node && Array.isArray(node.children) && node.children[0]) {
-            (0, theme_1.bindUniformRadius)(node.children[0], theme.borderRadius);
-            (0, theme_1.bindColorVariable)(node.children[0], 'strokes', theme.fontColor);
-        }
-    }
-    if (componentId === 'copy_coupon') {
-        const children = 'children' in node && Array.isArray(node.children)
-            ? node.children
-            : [];
-        if (children[0]) {
-            (0, theme_1.bindUniformRadius)(children[0], theme.borderRadius);
-            (0, theme_1.bindColorVariable)(children[0], 'strokes', theme.button2);
-            const codeTexts = getTextDescendants(children[0]);
-            for (let index = 0; index < codeTexts.length; index += 1) {
-                await (0, theme_1.applyThemeText)(codeTexts[index], theme, {
-                    charactersVariable: theme.incentive,
-                    colorVariable: theme.background1,
-                });
-            }
-        }
-        if (children[1]) {
-            (0, theme_1.bindUniformRadius)(children[1], theme.borderRadius);
-            (0, theme_1.bindColorVariable)(children[1], 'fills', theme.highlight);
-            const buttonTexts = getTextDescendants(children[1]);
-            for (let index = 0; index < buttonTexts.length; index += 1) {
-                await (0, theme_1.applyThemeText)(buttonTexts[index], theme, { colorVariable: theme.fontColor });
-            }
-        }
-    }
-    if (componentId === 'progress_bar') {
-        (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        (0, theme_1.bindColorVariable)(node, 'fills', theme.background2);
-        if ('children' in node && Array.isArray(node.children) && node.children[0]) {
-            (0, theme_1.bindUniformRadius)(node.children[0], theme.borderRadius);
-            (0, theme_1.bindColorVariable)(node.children[0], 'fills', theme.highlight);
-        }
-    }
-    if (componentId === 'headline_block' || componentId === 'subtext_block' || componentId === 'disclaimer_text') {
-        await (0, theme_1.applyThemeText)(node, theme, { colorVariable: theme.fontColor });
-    }
-    if (componentId === 'eyebrow_block') {
-        await (0, theme_1.applyThemeText)(node, theme, {
-            charactersVariable: theme.incentive,
-            colorVariable: theme.fontColor,
-        });
-    }
-    if (componentId === 'product_title' ||
-        componentId === 'product_subtitle' ||
-        componentId === 'product_price' ||
-        componentId === 'price_subtotal' ||
-        componentId === 'price_discount' ||
-        componentId === 'price_total') {
-        const textNodes = node.type === 'TEXT' ? [node] : getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.background1 });
-        }
-    }
-    if (componentId === 'countdown_timer' || componentId === 'close_control') {
-        if (componentId === 'countdown_timer') {
-            (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-            (0, theme_1.bindColorVariable)(node, 'fills', theme.background1);
-        }
-        if (componentId === 'close_control') {
-            if ('layoutMode' in node) {
-                node.layoutMode = 'HORIZONTAL';
-                node.primaryAxisSizingMode = 'FIXED';
-                node.counterAxisSizingMode = 'FIXED';
-                node.primaryAxisAlignItems = 'CENTER';
-                node.counterAxisAlignItems = 'CENTER';
-            }
-            if ('strokes' in node) {
-                node.strokes = [(0, shared_1.makeSolidFill)('#BDBDBD')];
-                (0, theme_1.bindColorVariable)(node, 'strokes', theme.background2);
-            }
-            if ('strokeWeight' in node) {
-                node.strokeWeight = 1;
-            }
-            (0, theme_1.bindUniformRadius)(node, theme.borderRadius);
-        }
-        const textNodes = getTextDescendants(node);
-        for (let index = 0; index < textNodes.length; index += 1) {
-            textNodes[index].textAutoResize = 'WIDTH_AND_HEIGHT';
-            textNodes[index].textAlignVertical = 'CENTER';
-            await (0, theme_1.applyThemeText)(textNodes[index], theme, { colorVariable: theme.fontColor });
-        }
-    }
-}
-function findPageByName(name) {
-    for (let index = 0; index < figma.root.children.length; index += 1) {
-        const child = figma.root.children[index];
-        if ((0, shared_1.isPageNode)(child) && child.name === name)
-            return child;
-    }
-    return undefined;
-}
-function clearPageChildren(page) {
-    const children = page.children.slice();
-    for (let index = 0; index < children.length; index += 1) {
-        children[index].remove();
-    }
-}
-async function loadBestMatchingFont(textNode, style) {
-    const family = style.fontFamily || 'Merriweather Sans';
-    const styleName = style.fontStyle === 'italic'
-        ? 'Italic'
-        : style.fontWeight && style.fontWeight >= 700
-            ? 'Bold'
-            : style.fontWeight && style.fontWeight >= 500
-                ? 'Medium'
-                : 'Regular';
-    try {
-        await figma.loadFontAsync({ family: family, style: styleName });
-        textNode.fontName = { family: family, style: styleName };
-    }
-    catch (_error) {
-        try {
-            await figma.loadFontAsync({ family: family, style: 'Regular' });
-            textNode.fontName = { family: family, style: 'Regular' };
-        }
-        catch (_secondError) {
-            // Keep whatever font is currently available.
-        }
-    }
-}
-function applyNodeStyleToShape(node, style) {
-    if (style.background)
-        node.fills = [(0, shared_1.makeSolidFill)(cssColorToHex(style.background))];
-    else if ('fills' in node)
-        node.fills = [];
-    if (style.borderColor && 'strokes' in node) {
-        node.strokes = [(0, shared_1.makeSolidFill)(cssColorToHex(style.borderColor))];
-        if (style.borderWidth != null)
-            node.strokeWeight = style.borderWidth;
-    }
-    else if ('strokes' in node) {
-        node.strokes = [];
-    }
-    if (style.borderRadius != null && 'cornerRadius' in node) {
-        node.cornerRadius = style.borderRadius;
-    }
-    if (style.opacity != null) {
-        node.opacity = style.opacity;
-    }
-}
-function cssColorToHex(value) {
-    const input = String(value || '').trim();
-    if (input.startsWith('#'))
-        return input;
-    const match = input.match(/rgba?\(([^)]+)\)/i);
-    if (!match)
-        return '#000000';
-    const parts = match[1].split(',').map(function (part) { return Number(String(part).trim()); });
-    const toHex = function (num) {
-        return Math.max(0, Math.min(255, Math.round(num))).toString(16).padStart(2, '0');
-    };
-    return '#' + toHex(parts[0] || 0) + toHex(parts[1] || 0) + toHex(parts[2] || 0);
-}
-function mapPrimaryAlign(value) {
-    if (value === 'CENTER')
-        return 'CENTER';
-    if (value === 'MAX')
-        return 'MAX';
-    if (value === 'SPACE_BETWEEN')
-        return 'SPACE_BETWEEN';
-    return 'MIN';
-}
-function mapCounterAlign(value) {
-    if (value === 'CENTER')
-        return 'CENTER';
-    if (value === 'MAX')
-        return 'MAX';
-    if (value === 'BASELINE')
-        return 'BASELINE';
-    return 'MIN';
-}
-function isCenteredControl(componentId) {
-    return (componentId === 'primary_button' ||
-        componentId === 'thank_you_button' ||
-        componentId === 'no_thanks_button' ||
-        componentId === 'product_button' ||
-        componentId === 'close_control');
-}
-async function createNodeFromManifest(node, parentBounds, parentLayoutMode) {
-    let sceneNode;
-    if (node.type === 'TEXT') {
-        const text = figma.createText();
-        await (0, shared_1.loadTextNodeFont)(text);
-        await loadBestMatchingFont(text, node.style);
-        text.characters = node.text || '';
-        if (node.style.fontSize != null)
-            text.fontSize = node.style.fontSize;
-        if (node.style.textAlign)
-            text.textAlignHorizontal = String(node.style.textAlign).toUpperCase();
-        if (node.componentOverride === 'close_control' || parentLayoutMode === 'HORIZONTAL' || parentLayoutMode === 'VERTICAL') {
-            text.textAlignVertical = 'CENTER';
-        }
-        if (node.style.color)
-            text.fills = [(0, shared_1.makeSolidFill)(cssColorToHex(node.style.color))];
-        if (node.style.opacity != null)
-            text.opacity = node.style.opacity;
-        if (node.bounds.width && node.bounds.height) {
-            if (parentLayoutMode === 'HORIZONTAL' || parentLayoutMode === 'VERTICAL') {
-                text.textAutoResize = 'WIDTH_AND_HEIGHT';
-            }
-            else {
-                text.textAutoResize = 'NONE';
-                text.resize(node.bounds.width, node.bounds.height);
-            }
-        }
-        sceneNode = text;
-    }
-    else if (node.children.length || node.type === 'FRAME' || node.type === 'GROUP' || node.type === 'COMPONENT' || node.type === 'INSTANCE') {
-        const frame = figma.createFrame();
-        frame.layoutMode = node.layout.mode === 'HORIZONTAL' || node.layout.mode === 'VERTICAL' ? node.layout.mode : 'NONE';
-        if (frame.layoutMode === 'HORIZONTAL') {
-            frame.primaryAxisSizingMode = node.layout.widthMode === 'HUG' ? 'AUTO' : 'FIXED';
-            frame.counterAxisSizingMode = node.layout.heightMode === 'HUG' ? 'AUTO' : 'FIXED';
-        }
-        else if (frame.layoutMode === 'VERTICAL') {
-            frame.primaryAxisSizingMode = node.layout.heightMode === 'HUG' ? 'AUTO' : 'FIXED';
-            frame.counterAxisSizingMode = node.layout.widthMode === 'HUG' ? 'AUTO' : 'FIXED';
-        }
-        if (frame.layoutMode !== 'NONE') {
-            frame.primaryAxisAlignItems = isCenteredControl(node.componentOverride) ? 'CENTER' : mapPrimaryAlign(node.layout.primaryAlign);
-            frame.counterAxisAlignItems = isCenteredControl(node.componentOverride) ? 'CENTER' : mapCounterAlign(node.layout.counterAlign);
-        }
-        frame.itemSpacing = node.layout.gap || 0;
-        frame.paddingTop = node.layout.padding.top || 0;
-        frame.paddingRight = node.layout.padding.right || 0;
-        frame.paddingBottom = node.layout.padding.bottom || 0;
-        frame.paddingLeft = node.layout.padding.left || 0;
-        if (node.bounds.width && node.bounds.height)
-            frame.resize(node.bounds.width, node.bounds.height);
-        applyNodeStyleToShape(frame, node.style);
-        for (let index = 0; index < node.children.length; index += 1) {
-            const child = await createNodeFromManifest(node.children[index], node.bounds, frame.layoutMode);
-            frame.appendChild(child);
-        }
-        sceneNode = frame;
-    }
-    else {
-        const rect = figma.createRectangle();
-        if (node.bounds.width && node.bounds.height)
-            rect.resize(node.bounds.width, node.bounds.height);
-        applyNodeStyleToShape(rect, node.style);
-        sceneNode = rect;
-    }
-    sceneNode.name = node.name;
-    if (node.componentOverride) {
-        (0, shared_1.applyComponentMeta)(sceneNode, node.componentOverride);
-    }
-    else if (node.metadata.exportRole || node.metadata.exportComponent || node.metadata.exportCollection || node.metadata.exportIgnore) {
-        (0, shared_1.setPluginMeta)(sceneNode, node.metadata);
-    }
-    if (parentBounds && parentLayoutMode === 'NONE' && ('x' in sceneNode) && ('y' in sceneNode)) {
-        sceneNode.x = node.bounds.x - parentBounds.x;
-        sceneNode.y = node.bounds.y - parentBounds.y;
-    }
-    return sceneNode;
-}
-async function buildLibrarySectionFrame(label, theme) {
-    const frame = figma.createFrame();
-    frame.name = label;
-    frame.layoutMode = 'VERTICAL';
-    frame.primaryAxisSizingMode = 'AUTO';
-    frame.counterAxisSizingMode = 'AUTO';
-    frame.itemSpacing = 16;
-    frame.paddingTop = 24;
-    frame.paddingRight = 24;
-    frame.paddingBottom = 24;
-    frame.paddingLeft = 24;
-    frame.cornerRadius = 12;
-    frame.fills = [(0, shared_1.makeSolidFill)('#3E3E3E')];
-    (0, theme_1.bindUniformRadius)(frame, theme.borderRadius);
-    (0, theme_1.bindColorVariable)(frame, 'fills', theme.background1);
-    const heading = figma.createText();
-    await (0, shared_1.loadTextNodeFont)(heading);
-    heading.name = label;
-    heading.characters = label;
-    heading.fontSize = 20;
-    await (0, theme_1.applyThemeText)(heading, theme, { colorVariable: theme.fontColor });
-    frame.appendChild(heading);
-    return frame;
-}
-async function ensureTemplatesPageFromLibrary() {
-    const library = template_library_1.BUNDLED_TEMPLATE_LIBRARY;
-    const themeSnapshot = library.assetTheme.length
-        ? library.assetTheme
-        : library.entries.length && library.entries[0].assetTheme
-            ? library.entries[0].assetTheme
-            : [];
-    await (0, theme_1.applyThemeSnapshot)(themeSnapshot);
-    let page = findPageByName(theme_1.TEMPLATES_PAGE_NAME);
-    if (!page) {
-        page = figma.createPage();
-        page.name = theme_1.TEMPLATES_PAGE_NAME;
-    }
-    clearPageChildren(page);
-    const entries = library.entries.slice();
-    const columnGap = 80;
-    const rowGap = 160;
-    const maxWidth = 2400;
-    let x = 0;
-    let y = 0;
-    let rowHeight = 0;
-    for (let index = 0; index < entries.length; index += 1) {
-        const entry = entries[index];
-        if (!entry || !entry.ast)
-            continue;
-        const frame = await createNodeFromManifest(entry.ast);
-        frame.name = entry.frameName;
-        if (x + frame.width > maxWidth && x > 0) {
-            x = 0;
-            y += rowHeight + rowGap;
-            rowHeight = 0;
-        }
-        page.appendChild(frame);
-        frame.x = x;
-        frame.y = y;
-        x += frame.width + columnGap;
-        rowHeight = Math.max(rowHeight, frame.height);
-    }
-    await figma.setCurrentPageAsync(page);
-    figma.viewport.scrollAndZoomIntoView(page.children);
-    return page;
-}
-async function ensureAssetSourcePage() {
-    const libraryTheme = template_library_1.BUNDLED_TEMPLATE_LIBRARY.assetTheme.length
-        ? template_library_1.BUNDLED_TEMPLATE_LIBRARY.assetTheme
-        : template_library_1.BUNDLED_TEMPLATE_LIBRARY.entries.length && template_library_1.BUNDLED_TEMPLATE_LIBRARY.entries[0].assetTheme
-            ? template_library_1.BUNDLED_TEMPLATE_LIBRARY.entries[0].assetTheme
-            : [];
-    const theme = await (0, theme_1.applyThemeSnapshot)(libraryTheme);
-    let page = findAssetLibraryPage();
-    if (!page) {
-        page = figma.createPage();
-        page.name = theme_1.ASSET_LIBRARY_PAGE_NAME;
-    }
-    const sections = {};
-    for (let index = 0; index < page.children.length; index += 1) {
-        const child = page.children[index];
-        if (child.type === 'FRAME') {
-            sections[String(child.name || '').toLowerCase()] = child;
-        }
-    }
-    for (let index = 0; index < constants_1.COMMON_COMPONENTS.length; index += 1) {
-        const component = constants_1.COMMON_COMPONENTS[index];
-        const stack = page.children.slice();
-        let existing = false;
-        while (stack.length) {
-            const current = stack.shift();
-            if (!current)
-                continue;
-            if ((0, shared_1.getPluginMeta)(current).exportComponent === component.id && current.type !== 'PAGE') {
-                existing = true;
-                break;
-            }
-            for (let childIndex = 0; childIndex < (0, shared_1.getNodeChildren)(current).length; childIndex += 1) {
-                stack.push((0, shared_1.getNodeChildren)(current)[childIndex]);
-            }
-        }
-        if (existing)
-            continue;
-        const sectionKey = String(component.category || '').toLowerCase();
-        if (!sections[sectionKey]) {
-            const section = await buildLibrarySectionFrame(component.category.charAt(0).toUpperCase() + component.category.slice(1), theme);
-            page.appendChild(section);
-            sections[sectionKey] = section;
-        }
-        const node = await (0, builders_1.buildAssetComponentNode)(component.id);
-        sections[sectionKey].appendChild(node);
-    }
-    const stack = page.children.slice();
-    while (stack.length) {
-        const current = stack.shift();
-        if (!current)
-            continue;
-        if (current.type !== 'PAGE') {
-            await applyThemeToExistingComponent(current, theme);
-        }
-        if ('children' in current && Array.isArray(current.children)) {
-            for (let index = 0; index < current.children.length; index += 1) {
-                stack.push(current.children[index]);
-            }
-        }
-    }
-    let x = 0;
-    const pageChildren = page.children.filter(function (child) { return child.type === 'FRAME'; });
-    for (let index = 0; index < pageChildren.length; index += 1) {
-        (0, theme_1.bindUniformRadius)(pageChildren[index], theme.borderRadius);
-        (0, theme_1.bindColorVariable)(pageChildren[index], 'fills', theme.background1);
-        const textChildren = pageChildren[index].children.filter(function (child) { return child.type === 'TEXT'; });
-        for (let textIndex = 0; textIndex < textChildren.length; textIndex += 1) {
-            await (0, theme_1.applyThemeText)(textChildren[textIndex], theme, { colorVariable: theme.fontColor });
-        }
-        pageChildren[index].x = x;
-        pageChildren[index].y = 0;
-        x += pageChildren[index].width + 48;
-    }
-    await figma.setCurrentPageAsync(page);
-    figma.viewport.scrollAndZoomIntoView(page.children);
-    return page;
-}
-},
-"generated/template-library": function(require, module, exports) {
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.BUNDLED_TEMPLATE_LIBRARY = void 0;
-exports.BUNDLED_TEMPLATE_LIBRARY = { "sourceFolder": "USI Modal", "assetTheme": [{ "collectionName": "Upsellit Asset Tokens", "name": "Incentive", "resolvedType": "STRING", "value": "15% Off" }, { "collectionName": "Upsellit Asset Tokens", "name": "Border Radius", "resolvedType": "FLOAT", "value": 36 }, { "collectionName": "Upsellit Asset Tokens", "name": "FontFamily", "resolvedType": "STRING", "value": "Merriweather Sans" }, { "collectionName": "Upsellit Asset Tokens", "name": "FontColor", "resolvedType": "COLOR", "value": { "r": 0.9176470637321472, "g": 0.9176470637321472, "b": 0.9176470637321472, "a": 1 } }, { "collectionName": "Upsellit Asset Tokens", "name": "Background 1", "resolvedType": "COLOR", "value": { "r": 0.24313725531101227, "g": 0.24313725531101227, "b": 0.24313725531101227, "a": 1 } }, { "collectionName": "Upsellit Asset Tokens", "name": "Background 2", "resolvedType": "COLOR", "value": { "r": 0.7400000095367432, "g": 0.7400000095367432, "b": 0.7400000095367432, "a": 1 } }, { "collectionName": "Upsellit Asset Tokens", "name": "Button 1", "resolvedType": "COLOR", "value": { "r": 0.23529411852359772, "g": 0.545098066329956, "b": 0.8509804010391235, "a": 1 } }, { "collectionName": "Upsellit Asset Tokens", "name": "Button 2", "resolvedType": "COLOR", "value": { "r": 0.06325899809598923, "g": 0.3113093078136444, "b": 0.5562196373939514, "a": 1 } }, { "collectionName": "Upsellit Asset Tokens", "name": "Highlight", "resolvedType": "COLOR", "value": { "r": 0.8235294222831726, "g": 0.0235294122248888, "b": 0.5333333611488342, "a": 1 } }], "entries": [{ "frameName": "Bottom-Bar-01", "folder": "upsellit-modal-templates-v2_bottom-bar-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "Don’t go until you take a look at this deal", "closeButton": true, "products": [], "primaryCta": { "label": "Redeem Now" }, "disclaimer": "We use your information in accordance with our Privacy Policy." }, "ast": { "id": "1:352", "name": "Bottom-Bar-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "bottom_bar_shell", "bounds": { "x": 555, "y": 1331, "width": 1280, "height": 180 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:353", "name": "Disclaimer", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "disclaimer", "componentOverride": "disclaimer_text", "text": "We use your information in accordance with our Privacy Policy.", "bounds": { "x": 1328.786376953125, "y": 1472.721923828125, "width": 320, "height": 13 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 10, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "disclaimer", "roleConfidence": 1, "metadata": { "exportRole": "disclaimer", "exportComponent": "disclaimer_text" } }, { "id": "1:354", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": 1328.786376953125, "y": 1383.721923828125, "width": 307, "height": 73 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:355", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": 1352.786376953125, "y": 1397.721923828125, "width": 259, "height": 45 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:356", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "Don’t go until you take a look at this deal", "bounds": { "x": 582.786376953125, "y": 1350.721923828125, "width": 518, "height": 134 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "6:14", "name": "Logo", "type": "INSTANCE", "visible": true, "ignored": false, "bounds": { "x": 1141, "y": 1361, "width": 107, "height": 112 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "I6:14;6:3", "name": "Logo Icon", "type": "RECTANGLE", "visible": true, "ignored": false, "bounds": { "x": 1141, "y": 1361, "width": 107, "height": 112 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "12:1189", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 1775, "y": 1338, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I12:1189;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 1775, "y": 1334, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "bottom_bar_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_bottom-bar-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_bottom-bar-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_bottom-bar-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "LC-Mobile-P1-01", "folder": "upsellit-modal-templates-v2_lc-mobile-p1-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "eyebrow": "TODAY ONLY", "closeButton": true, "products": [], "primaryCta": { "label": "Submit Email" } }, "ast": { "id": "1:2", "name": "LC-Mobile-P1-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1849, "y": 1345, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:5", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -1784, "y": 1799.5, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:6", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Submit Email", "bounds": { "x": -1760, "y": 1813.5, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:28", "name": "Email Input", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "email-input", "componentOverride": "email_input", "bounds": { "x": -1786, "y": 1634, "width": 527, "height": 82 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 16, "bottom": 14, "left": 16 }, "primaryAlign": "MIN", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderColor": "rgb(207, 207, 207)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:29", "name": "Email Input Placeholder", "type": "TEXT", "visible": true, "ignored": false, "text": "Enter your email", "bounds": { "x": -1770, "y": 1660, "width": 288, "height": 30 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(111, 111, 111)", "borderWidth": 1, "opacity": 1, "color": "rgb(111, 111, 111)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "email-input", "roleConfidence": 1, "metadata": { "exportRole": "email-input", "exportComponent": "email_input" } }, { "id": "1:55", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -1849, "y": 1449, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:56", "name": "Eyebrow", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "eyebrow", "componentOverride": "eyebrow_block", "text": "TODAY ONLY", "bounds": { "x": -1636, "y": 1415.5, "width": 220, "height": 30 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "eyebrow", "roleConfidence": 1, "metadata": { "exportRole": "eyebrow", "exportComponent": "eyebrow_block" } }, { "id": "1:248", "name": "Opt-In", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "optin", "componentOverride": "optin_component", "bounds": { "x": -1784, "y": 1731, "width": 522, "height": 46 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 10, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "CENTER", "widthMode": "HUG", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:249", "name": "Opt-In Box", "type": "RECTANGLE", "visible": true, "ignored": false, "bounds": { "x": -1784, "y": 1745, "width": 18, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderColor": "rgb(34, 34, 34)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:250", "name": "Opt-In Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Yes, send me updates and offers.", "bounds": { "x": -1756, "y": 1735.5, "width": 494, "height": 37 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "optin", "roleConfidence": 1, "metadata": { "exportRole": "optin", "exportComponent": "optin_component" } }, { "id": "7:40", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -1285, "y": 1362, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:40;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -1285, "y": 1358, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_lc-mobile-p1-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_lc-mobile-p1-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_lc-mobile-p1-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "LC-Mobile-P2-01", "folder": "upsellit-modal-templates-v2_lc-mobile-p2-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "Thank you Your discount is on its way", "closeButton": true, "products": [], "primaryCta": { "label": "Continue Shopping" } }, "ast": { "id": "1:30", "name": "LC-Mobile-P2-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1147, "y": 1345, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:35", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "Thank you\nYour discount \nis on its way", "bounds": { "x": -1145, "y": 1473, "width": 640, "height": 266 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontSize": 64, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:246", "name": "Thank You Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "thank_you_button", "bounds": { "x": -1096, "y": 1815, "width": 537, "height": 126 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:247", "name": "Thank You Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Continue Shopping", "bounds": { "x": -1072, "y": 1829, "width": 513, "height": 98 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "thank_you_button" } }, { "id": "7:34", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -583, "y": 1362, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:34;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -583, "y": 1358, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_lc-mobile-p2-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_lc-mobile-p2-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_lc-mobile-p2-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "LC-Phone-Mobile-P1-01", "folder": "upsellit-modal-templates-v2_lc-phone-mobile-p1-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "eyebrow": "TODAY ONLY", "closeButton": true, "products": [], "primaryCta": { "label": "Send Phone Number" } }, "ast": { "id": "1:257", "name": "LC-Phone-Mobile-P1-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1849, "y": 2201, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:258", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -1784, "y": 2655.5, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:259", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Send Phone Number", "bounds": { "x": -1760, "y": 2669.5, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 40, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:262", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -1849, "y": 2305, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:263", "name": "Eyebrow", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "eyebrow", "componentOverride": "eyebrow_block", "text": "TODAY ONLY", "bounds": { "x": -1636, "y": 2271.5, "width": 220, "height": 30 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "eyebrow", "roleConfidence": 1, "metadata": { "exportRole": "eyebrow", "exportComponent": "eyebrow_block" } }, { "id": "1:270", "name": "Phone Input", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "phone-input", "componentOverride": "phone_input", "bounds": { "x": -1784, "y": 2479, "width": 527, "height": 87 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 16, "bottom": 14, "left": 16 }, "primaryAlign": "MIN", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderColor": "rgb(207, 207, 207)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:271", "name": "Phone Input Placeholder", "type": "TEXT", "visible": true, "ignored": false, "text": "Enter your phone number", "bounds": { "x": -1768, "y": 2510, "width": 288, "height": 25 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(111, 111, 111)", "borderWidth": 1, "opacity": 1, "color": "rgb(111, 111, 111)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 20, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "phone-input", "roleConfidence": 1, "metadata": { "exportRole": "phone-input", "exportComponent": "phone_input" } }, { "id": "1:266", "name": "Opt-In", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "optin", "componentOverride": "optin_component", "bounds": { "x": -1784, "y": 2587, "width": 522, "height": 46 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 10, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "CENTER", "widthMode": "HUG", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:267", "name": "Opt-In Box", "type": "RECTANGLE", "visible": true, "ignored": false, "bounds": { "x": -1784, "y": 2601, "width": 18, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderColor": "rgb(34, 34, 34)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:268", "name": "Opt-In Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Yes, send me updates and offers.", "bounds": { "x": -1756, "y": 2591.5, "width": 494, "height": 37 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "optin", "roleConfidence": 1, "metadata": { "exportRole": "optin", "exportComponent": "optin_component" } }, { "id": "7:37", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -1285, "y": 2218, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:37;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -1285, "y": 2214, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_lc-phone-mobile-p1-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_lc-phone-mobile-p1-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_lc-phone-mobile-p1-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "LC-Phone-Mobile-P2-01", "folder": "upsellit-modal-templates-v2_lc-phone-mobile-p2-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "Thank you Your discount is on its way", "closeButton": true, "products": [], "primaryCta": { "label": "Continue Shopping" } }, "ast": { "id": "1:251", "name": "LC-Phone-Mobile-P2-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1147, "y": 2201, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:252", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "Thank you\nYour discount \nis on its way", "bounds": { "x": -1145, "y": 2329, "width": 640, "height": 266 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontSize": 64, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:255", "name": "Thank You Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "thank_you_button", "bounds": { "x": -1096, "y": 2671, "width": 537, "height": 126 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:256", "name": "Thank You Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Continue Shopping", "bounds": { "x": -1072, "y": 2685, "width": 513, "height": 98 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "thank_you_button" } }, { "id": "7:43", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -583, "y": 2218, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:43;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -583, "y": 2214, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_lc-phone-mobile-p2-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_lc-phone-mobile-p2-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_lc-phone-mobile-p2-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "Sidebar-01", "folder": "upsellit-modal-templates-v2_sidebar-01_26-04", "schema": { "pattern": "single", "layout": "mobile", "headline": "Don’t go until you take a look at this deal", "closeButton": true, "products": [], "primaryCta": { "label": "Redeem Now" }, "disclaimer": "We use your information in accordance with our Privacy Policy." }, "ast": { "id": "1:345", "name": "Sidebar-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "sidebar_shell", "bounds": { "x": -325, "y": 1331, "width": 400, "height": 1200 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:351", "name": "Disclaimer", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "disclaimer", "componentOverride": "disclaimer_text", "text": "We use your information in accordance with our Privacy Policy.", "bounds": { "x": -273, "y": 2486, "width": 320, "height": 13 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 10, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "disclaimer", "roleConfidence": 1, "metadata": { "exportRole": "disclaimer", "exportComponent": "disclaimer_text" } }, { "id": "1:349", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -273, "y": 2013, "width": 307, "height": 75 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:350", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": -249, "y": 2027, "width": 257, "height": 47 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:348", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "Don’t go until you take a look at this deal", "bounds": { "x": -273, "y": 1711, "width": 307, "height": 255 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "6:8", "name": "Logo", "type": "COMPONENT", "visible": true, "ignored": false, "bounds": { "x": -207, "y": 1438, "width": 165, "height": 172 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "6:3", "name": "Logo Icon", "type": "RECTANGLE", "visible": true, "ignored": false, "bounds": { "x": -207, "y": 1438, "width": 165, "height": 172 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "7:31", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 15, "y": 1331, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:31;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 15, "y": 1327, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "sidebar_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_sidebar-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_sidebar-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_sidebar-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "Sidebar-02", "folder": "upsellit-modal-templates-v2_sidebar-02_26-04", "schema": { "pattern": "grid", "layout": "mobile", "headline": "Don’t go until you take a look at this deal", "closeButton": true, "products": [{ "title": "Product Name", "subtitle": "$XX.XX", "cta": "View Item", "imageAlt": "Product Name", "imageAsset": "upsellit-modal-templates-v2_sidebar-02_26-04-product-1.webp" }, { "title": "Product Name", "subtitle": "$XX.XX", "cta": "View Item", "imageAlt": "Product Name", "imageAsset": "upsellit-modal-templates-v2_sidebar-02_26-04-product-2.webp" }, { "title": "Product Name", "subtitle": "$XX.XX", "cta": "View Item", "imageAlt": "Product Name", "imageAsset": "upsellit-modal-templates-v2_sidebar-02_26-04-product-3.webp" }], "primaryCta": { "label": "Redeem Now" }, "disclaimer": "We use your information in accordance with our Privacy Policy." }, "ast": { "id": "3:3", "name": "Sidebar-02", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "sidebar_shell", "bounds": { "x": 115, "y": 1331, "width": 400, "height": 1200 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "3:4", "name": "Disclaimer", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "disclaimer", "componentOverride": "disclaimer_text", "text": "We use your information in accordance with our Privacy Policy.", "bounds": { "x": 167, "y": 2486, "width": 320, "height": 13 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 10, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "disclaimer", "roleConfidence": 1, "metadata": { "exportRole": "disclaimer", "exportComponent": "disclaimer_text" } }, { "id": "3:5", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": 161, "y": 1640, "width": 307, "height": 73 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "3:6", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": 185, "y": 1654, "width": 259, "height": 45 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "3:7", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "Don’t go until you take a look at this deal", "bounds": { "x": 161, "y": 1385, "width": 307, "height": 255 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "3:11", "name": "Product Grid", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-list", "componentOverride": "product_grid", "collection": "products", "bounds": { "x": 136, "y": 1743, "width": 358, "height": 704 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 16, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "CENTER", "widthMode": "HUG", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "3:12", "name": "Product Card", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-card", "componentOverride": "product_card", "bounds": { "x": 136, "y": 1743, "width": 358, "height": 220 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 12, "right": 12, "bottom": 12, "left": 12 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "3:13", "name": "Product Image", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "product-image", "componentOverride": "product_image", "bounds": { "x": 247, "y": 1761, "width": 136, "height": 96 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 8, "opacity": 1 }, "children": [], "detectedRole": "product-image", "roleConfidence": 1, "metadata": { "exportRole": "product-image", "exportComponent": "product_image" } }, { "id": "3:14", "name": "Product Title", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-title", "componentOverride": "product_title", "text": "Product Name", "bounds": { "x": 247, "y": 1865, "width": 136, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-title", "roleConfidence": 1, "metadata": { "exportRole": "product-title", "exportComponent": "product_title" } }, { "id": "3:15", "name": "Product Subtitle", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-subtitle", "componentOverride": "product_subtitle", "text": "$XX.XX", "bounds": { "x": 247, "y": 1891, "width": 136, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-subtitle", "roleConfidence": 1, "metadata": { "exportRole": "product-subtitle", "exportComponent": "product_subtitle" } }, { "id": "3:16", "name": "Product Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-cta", "componentOverride": "product_button", "bounds": { "x": 148, "y": 1914, "width": 334, "height": 31 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 8, "right": 12, "bottom": 8, "left": 12 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FILL", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "3:17", "name": "Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "View Item", "bounds": { "x": 286, "y": 1922, "width": 58, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "product-cta", "roleConfidence": 1, "metadata": { "exportRole": "product-cta", "exportComponent": "product_button" } }], "detectedRole": "product-card", "roleConfidence": 1, "metadata": { "exportRole": "product-card", "exportComponent": "product_card" } }, { "id": "3:18", "name": "Product Card", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-card", "componentOverride": "product_card", "bounds": { "x": 136, "y": 1979, "width": 358, "height": 220 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 12, "right": 12, "bottom": 12, "left": 12 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "12:1192", "name": "Product Image", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "product-image", "componentOverride": "product_image", "bounds": { "x": 247, "y": 1997, "width": 136, "height": 96 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 8, "opacity": 1 }, "children": [], "detectedRole": "product-image", "roleConfidence": 1, "metadata": { "exportRole": "product-image", "exportComponent": "product_image" } }, { "id": "3:20", "name": "Product Title", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-title", "componentOverride": "product_title", "text": "Product Name", "bounds": { "x": 247, "y": 2101, "width": 136, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-title", "roleConfidence": 1, "metadata": { "exportRole": "product-title", "exportComponent": "product_title" } }, { "id": "3:21", "name": "Product Subtitle", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-subtitle", "componentOverride": "product_subtitle", "text": "$XX.XX", "bounds": { "x": 247, "y": 2127, "width": 136, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-subtitle", "roleConfidence": 1, "metadata": { "exportRole": "product-subtitle", "exportComponent": "product_subtitle" } }, { "id": "3:22", "name": "Product Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-cta", "componentOverride": "product_button", "bounds": { "x": 148, "y": 2150, "width": 334, "height": 31 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 8, "right": 12, "bottom": 8, "left": 12 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FILL", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "3:23", "name": "Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "View Item", "bounds": { "x": 286, "y": 2158, "width": 58, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "product-cta", "roleConfidence": 1, "metadata": { "exportRole": "product-cta", "exportComponent": "product_button" } }], "detectedRole": "product-card", "roleConfidence": 1, "metadata": { "exportRole": "product-card", "exportComponent": "product_card" } }, { "id": "3:24", "name": "Product Card", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-card", "componentOverride": "product_card", "bounds": { "x": 136, "y": 2215, "width": 358, "height": 220 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 12, "right": 12, "bottom": 12, "left": 12 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "12:1194", "name": "Product Image", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "product-image", "componentOverride": "product_image", "bounds": { "x": 247, "y": 2233, "width": 136, "height": 96 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 8, "opacity": 1 }, "children": [], "detectedRole": "product-image", "roleConfidence": 1, "metadata": { "exportRole": "product-image", "exportComponent": "product_image" } }, { "id": "3:26", "name": "Product Title", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-title", "componentOverride": "product_title", "text": "Product Name", "bounds": { "x": 247, "y": 2337, "width": 136, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-title", "roleConfidence": 1, "metadata": { "exportRole": "product-title", "exportComponent": "product_title" } }, { "id": "3:27", "name": "Product Subtitle", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-subtitle", "componentOverride": "product_subtitle", "text": "$XX.XX", "bounds": { "x": 247, "y": 2363, "width": 136, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-subtitle", "roleConfidence": 1, "metadata": { "exportRole": "product-subtitle", "exportComponent": "product_subtitle" } }, { "id": "3:28", "name": "Product Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-cta", "componentOverride": "product_button", "bounds": { "x": 148, "y": 2386, "width": 334, "height": 31 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 8, "right": 12, "bottom": 8, "left": 12 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FILL", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "3:29", "name": "Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "View Item", "bounds": { "x": 286, "y": 2394, "width": 58, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "product-cta", "roleConfidence": 1, "metadata": { "exportRole": "product-cta", "exportComponent": "product_button" } }], "detectedRole": "product-card", "roleConfidence": 1, "metadata": { "exportRole": "product-card", "exportComponent": "product_card" } }], "detectedRole": "product-list", "roleConfidence": 1, "metadata": { "exportRole": "product-list", "exportComponent": "product_grid", "exportCollection": "products" } }, { "id": "7:28", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 444, "y": 1331, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:28;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 444, "y": 1327, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }, { "id": "12:1186", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 444, "y": 1331, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I12:1186;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 444, "y": 1327, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "sidebar_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_sidebar-02_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_sidebar-02_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_sidebar-02_26-04_flattened_text_baked.webp", "productAssets": ["upsellit-modal-templates-v2_sidebar-02_26-04-product-1.webp", "upsellit-modal-templates-v2_sidebar-02_26-04-product-2.webp", "upsellit-modal-templates-v2_sidebar-02_26-04-product-3.webp"], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "Survey-Mobile-P1-01", "folder": "upsellit-modal-templates-v2_survey-mobile-p1-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "closeButton": true, "products": [], "primaryCta": { "label": "Submit" } }, "ast": { "id": "1:284", "name": "Survey-Mobile-P1-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1849, "y": 3057, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:285", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -1784, "y": 3533, "width": 527, "height": 127 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:286", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Submit", "bounds": { "x": -1760, "y": 3547, "width": 479, "height": 113 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:287", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -1849, "y": 3131, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:293", "name": "Survey Block", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "survey", "componentOverride": "survey_block", "bounds": { "x": -1774, "y": 3283, "width": 490, "height": 208 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 12, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:294", "name": "Survey Question", "type": "TEXT", "visible": true, "ignored": false, "text": "How likely are you to purchase today?", "bounds": { "x": -1774, "y": 3283, "width": 490, "height": 30 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FILL", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:295", "name": "Survey Option", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "survey", "componentOverride": "survey_block", "bounds": { "x": -1774, "y": 3325, "width": 92, "height": 40 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 10, "right": 14, "bottom": 10, "left": 14 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:296", "name": "Survey Option Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Option 1", "bounds": { "x": -1760, "y": 3335, "width": 64, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "survey", "roleConfidence": 1, "metadata": { "exportRole": "survey", "exportComponent": "survey_block" } }, { "id": "1:297", "name": "Survey Option", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "survey", "componentOverride": "survey_block", "bounds": { "x": -1774, "y": 3377, "width": 94, "height": 40 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 10, "right": 14, "bottom": 10, "left": 14 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:298", "name": "Survey Option Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Option 2", "bounds": { "x": -1760, "y": 3387, "width": 66, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "survey", "roleConfidence": 1, "metadata": { "exportRole": "survey", "exportComponent": "survey_block" } }, { "id": "1:299", "name": "Survey Option", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "survey", "componentOverride": "survey_block", "bounds": { "x": -1774, "y": 3429, "width": 94, "height": 40 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 10, "right": 14, "bottom": 10, "left": 14 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:300", "name": "Survey Option Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Option 3", "bounds": { "x": -1760, "y": 3439, "width": 66, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "survey", "roleConfidence": 1, "metadata": { "exportRole": "survey", "exportComponent": "survey_block" } }], "detectedRole": "survey", "roleConfidence": 1, "metadata": { "exportRole": "survey", "exportComponent": "survey_block" } }, { "id": "7:7", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -1285, "y": 3074, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:7;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -1285, "y": 3070, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_survey-mobile-p1-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_survey-mobile-p1-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_survey-mobile-p1-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "Survey-Mobile-P2-01", "folder": "upsellit-modal-templates-v2_survey-mobile-p2-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "subtext": "Thank you", "closeButton": true, "products": [], "primaryCta": { "label": "Close Window" } }, "ast": { "id": "1:301", "name": "Survey-Mobile-P2-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1169, "y": 3057, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:302", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -1104, "y": 3511.5, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:303", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Close Window", "bounds": { "x": -1080, "y": 3525.5, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:316", "name": "Subtext", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "subtext", "componentOverride": "subtext_block", "text": "Thank you", "bounds": { "x": -1104, "y": 3292, "width": 515, "height": 45 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 36, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "subtext", "roleConfidence": 1, "metadata": { "exportRole": "subtext", "exportComponent": "subtext_block" } }, { "id": "1:304", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -1169, "y": 3131, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "7:3", "name": "Close Button", "type": "COMPONENT", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -605, "y": 3074, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -605, "y": 3070, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_survey-mobile-p2-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_survey-mobile-p2-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_survey-mobile-p2-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "TT-Mobile-01", "folder": "upsellit-modal-templates-v2_tt-mobile-01_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "eyebrow": "TODAY ONLY", "closeButton": true, "products": [], "primaryCta": { "label": "Redeem Now" } }, "ast": { "id": "1:21", "name": "TT-Mobile-01", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1849, "y": 425, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 68, "padding": { "top": 50, "right": 0, "bottom": 50, "left": 0 }, "primaryAlign": "CENTER", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderColor": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:22", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -1792.5, "y": 861, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 50, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "SPACE_BETWEEN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:23", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": -1768.5, "y": 875, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:52", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -1849, "y": 639, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:53", "name": "Eyebrow", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "eyebrow", "componentOverride": "eyebrow_block", "text": "TODAY ONLY", "bounds": { "x": -1849, "y": 542, "width": 640, "height": 30 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "eyebrow", "roleConfidence": 1, "metadata": { "exportRole": "eyebrow", "exportComponent": "eyebrow_block" } }, { "id": "7:10", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": -1285, "y": 442, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:10;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": -1285, "y": 438, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_tt-mobile-01_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_tt-mobile-01_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_tt-mobile-01_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "TT-Mobile-02", "folder": "upsellit-modal-templates-v2_tt-mobile-02_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "closeButton": false, "products": [], "primaryCta": { "label": "Redeem Now" }, "disclaimer": "We use your information in accordance with our Privacy Policy." }, "ast": { "id": "1:39", "name": "TT-Mobile-02", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -1147, "y": 425, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:58", "name": "Media Panel", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "image", "componentOverride": "media_panel", "bounds": { "x": -1147, "y": 425, "width": 640, "height": 330 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [], "detectedRole": "image", "roleConfidence": 1, "metadata": { "exportRole": "image", "exportComponent": "media_panel" } }, { "id": "1:48", "name": "Disclaimer", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "disclaimer", "componentOverride": "disclaimer_text", "text": "We use your information in accordance with our Privacy Policy.", "bounds": { "x": -987, "y": 1040, "width": 320, "height": 13 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 10, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "disclaimer", "roleConfidence": 1, "metadata": { "exportRole": "disclaimer", "exportComponent": "disclaimer_text" } }, { "id": "1:49", "name": "No Thanks Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "secondary-cta", "componentOverride": "no_thanks_button", "bounds": { "x": -886, "y": 985, "width": 117, "height": 40 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 10, "right": 18, "bottom": 10, "left": 18 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:50", "name": "No Thanks Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "No Thanks", "bounds": { "x": -868, "y": 995, "width": 81, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "secondary-cta", "roleConfidence": 1, "metadata": { "exportRole": "secondary-cta", "exportComponent": "no_thanks_button" } }, { "id": "1:40", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -1090, "y": 815, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:41", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": -1066, "y": 829, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:42", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -1150, "y": 578, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:272", "name": "Countdown Timer", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "countdown", "componentOverride": "countdown_timer", "bounds": { "x": -859, "y": 488, "width": 86, "height": 43 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 10, "right": 16, "bottom": 10, "left": 16 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:273", "name": "Timer Text", "type": "TEXT", "visible": true, "ignored": false, "text": "09:59", "bounds": { "x": -843, "y": 498, "width": 54, "height": 23 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 18, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "countdown", "roleConfidence": 1, "metadata": { "exportRole": "countdown", "exportComponent": "countdown_timer" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_tt-mobile-02_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_tt-mobile-02_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_tt-mobile-02_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "TT-Mobile-03", "folder": "upsellit-modal-templates-v2_tt-mobile-03_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "eyebrow": "TODAY ONLY", "closeButton": false, "products": [], "primaryCta": { "label": "Redeem Now" }, "disclaimer": "We use your information in accordance with our Privacy Policy." }, "ast": { "id": "1:59", "name": "TT-Mobile-03", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": -445, "y": 425, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:67", "name": "No Thanks Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "secondary-cta", "componentOverride": "no_thanks_button", "bounds": { "x": -184, "y": 985, "width": 117, "height": 40 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 10, "right": 18, "bottom": 10, "left": 18 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(16, 79, 142)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:68", "name": "No Thanks Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "No Thanks", "bounds": { "x": -166, "y": 995, "width": 81, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "secondary-cta", "roleConfidence": 1, "metadata": { "exportRole": "secondary-cta", "exportComponent": "no_thanks_button" } }, { "id": "1:62", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": -388, "y": 815, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:63", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": -364, "y": 829, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:64", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": -448, "y": 519, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:65", "name": "Eyebrow", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "eyebrow", "componentOverride": "eyebrow_block", "text": "TODAY ONLY", "bounds": { "x": -232, "y": 496, "width": 220, "height": 30 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 24, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "eyebrow", "roleConfidence": 1, "metadata": { "exportRole": "eyebrow", "exportComponent": "eyebrow_block" } }, { "id": "1:66", "name": "Disclaimer", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "disclaimer", "componentOverride": "disclaimer_text", "text": "We use your information in accordance with our Privacy Policy.", "bounds": { "x": -285, "y": 1040, "width": 320, "height": 13 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 10, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "disclaimer", "roleConfidence": 1, "metadata": { "exportRole": "disclaimer", "exportComponent": "disclaimer_text" } }, { "id": "1:70", "name": "Copy Coupon", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "copy-coupon", "componentOverride": "copy_coupon", "bounds": { "x": -231, "y": 682, "width": 213, "height": 44 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 12, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "CENTER", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:71", "name": "Coupon Code", "type": "FRAME", "visible": true, "ignored": false, "bounds": { "x": -231, "y": 682, "width": 89, "height": 44 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 12, "right": 16, "bottom": 12, "left": 16 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(189, 189, 189)", "borderColor": "rgb(31, 31, 31)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:72", "name": "Coupon Label", "type": "TEXT", "visible": true, "ignored": false, "text": "SAVE15", "bounds": { "x": -215, "y": 694, "width": 57, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:73", "name": "Copy Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "copy-coupon", "componentOverride": "copy_coupon", "bounds": { "x": -130, "y": 682, "width": 112, "height": 44 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 12, "right": 16, "bottom": 12, "left": 16 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(210, 6, 136)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:74", "name": "Copy Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Copy Code", "bounds": { "x": -114, "y": 694, "width": 80, "height": 20 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "HUG" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 16, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "copy-coupon", "roleConfidence": 1, "metadata": { "exportRole": "copy-coupon", "exportComponent": "copy_coupon" } }], "detectedRole": "copy-coupon", "roleConfidence": 1, "metadata": { "exportRole": "copy-coupon", "exportComponent": "copy_coupon" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_tt-mobile-03_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_tt-mobile-03_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_tt-mobile-03_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "TT-Mobile-04", "folder": "upsellit-modal-templates-v2_tt-mobile-04_26-04", "schema": { "pattern": "grid", "layout": "desktop", "headline": "15% Off", "closeButton": true, "products": [{ "title": "Product Name", "subtitle": "$XX.XX", "imageAlt": "Product Name", "imageAsset": "upsellit-modal-templates-v2_tt-mobile-04_26-04-product-1.webp" }, { "title": "Product Name", "subtitle": "$XX.XX", "imageAlt": "Product Name", "imageAsset": "upsellit-modal-templates-v2_tt-mobile-04_26-04-product-2.webp" }, { "title": "Product Name", "subtitle": "$XX.XX", "imageAlt": "Product Name", "imageAsset": "upsellit-modal-templates-v2_tt-mobile-04_26-04-product-3.webp" }], "primaryCta": { "label": "Redeem Now" }, "disclaimer": "We use your information in accordance with our Privacy Policy." }, "ast": { "id": "1:75", "name": "TT-Mobile-04", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": 257, "y": 425, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:78", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": 310, "y": 864, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:79", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": 334, "y": 878, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:80", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": 254, "y": 458, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 96, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:82", "name": "Disclaimer", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "disclaimer", "componentOverride": "disclaimer_text", "text": "We use your information in accordance with our Privacy Policy.", "bounds": { "x": 417, "y": 1040, "width": 320, "height": 13 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 10, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "disclaimer", "roleConfidence": 1, "metadata": { "exportRole": "disclaimer", "exportComponent": "disclaimer_text" } }, { "id": "1:91", "name": "Product Grid", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-list", "componentOverride": "product_grid", "collection": "products", "bounds": { "x": 318, "y": 640, "width": 512, "height": 177 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 16, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "HUG", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:92", "name": "Product Card", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-card", "componentOverride": "product_card", "bounds": { "x": 318, "y": 640, "width": 160, "height": 177 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 12, "right": 12, "bottom": 12, "left": 12 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "12:1196", "name": "Product Image", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "product-image", "componentOverride": "product_image", "bounds": { "x": 330, "y": 652, "width": 136, "height": 96 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 8, "opacity": 1 }, "children": [], "detectedRole": "product-image", "roleConfidence": 1, "metadata": { "exportRole": "product-image", "exportComponent": "product_image" } }, { "id": "1:94", "name": "Product Title", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-title", "componentOverride": "product_title", "text": "Product Name", "bounds": { "x": 330, "y": 756, "width": 136, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-title", "roleConfidence": 1, "metadata": { "exportRole": "product-title", "exportComponent": "product_title" } }, { "id": "1:95", "name": "Product Subtitle", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-subtitle", "componentOverride": "product_subtitle", "text": "$XX.XX", "bounds": { "x": 330, "y": 782, "width": 136, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-subtitle", "roleConfidence": 1, "metadata": { "exportRole": "product-subtitle", "exportComponent": "product_subtitle" } }], "detectedRole": "product-card", "roleConfidence": 1, "metadata": { "exportRole": "product-card", "exportComponent": "product_card" } }, { "id": "1:98", "name": "Product Card", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-card", "componentOverride": "product_card", "bounds": { "x": 494, "y": 640, "width": 160, "height": 177 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 12, "right": 12, "bottom": 12, "left": 12 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "12:1198", "name": "Product Image", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "product-image", "componentOverride": "product_image", "bounds": { "x": 506, "y": 652, "width": 136, "height": 96 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 8, "opacity": 1 }, "children": [], "detectedRole": "product-image", "roleConfidence": 1, "metadata": { "exportRole": "product-image", "exportComponent": "product_image" } }, { "id": "1:100", "name": "Product Title", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-title", "componentOverride": "product_title", "text": "Product Name", "bounds": { "x": 506, "y": 756, "width": 136, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-title", "roleConfidence": 1, "metadata": { "exportRole": "product-title", "exportComponent": "product_title" } }, { "id": "1:101", "name": "Product Subtitle", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-subtitle", "componentOverride": "product_subtitle", "text": "$XX.XX", "bounds": { "x": 506, "y": 782, "width": 136, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-subtitle", "roleConfidence": 1, "metadata": { "exportRole": "product-subtitle", "exportComponent": "product_subtitle" } }], "detectedRole": "product-card", "roleConfidence": 1, "metadata": { "exportRole": "product-card", "exportComponent": "product_card" } }, { "id": "1:104", "name": "Product Card", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "product-card", "componentOverride": "product_card", "bounds": { "x": 670, "y": 640, "width": 160, "height": 177 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 12, "right": 12, "bottom": 12, "left": 12 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "12:1200", "name": "Product Image", "type": "RECTANGLE", "visible": true, "ignored": false, "roleOverride": "product-image", "componentOverride": "product_image", "bounds": { "x": 682, "y": 652, "width": 136, "height": 96 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 8, "opacity": 1 }, "children": [], "detectedRole": "product-image", "roleConfidence": 1, "metadata": { "exportRole": "product-image", "exportComponent": "product_image" } }, { "id": "1:106", "name": "Product Title", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-title", "componentOverride": "product_title", "text": "Product Name", "bounds": { "x": 682, "y": 756, "width": 136, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-title", "roleConfidence": 1, "metadata": { "exportRole": "product-title", "exportComponent": "product_title" } }, { "id": "1:107", "name": "Product Subtitle", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "product-subtitle", "componentOverride": "product_subtitle", "text": "$XX.XX", "bounds": { "x": 682, "y": 782, "width": 136, "height": 15 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(0, 0, 0)", "borderWidth": 1, "opacity": 1, "color": "rgb(0, 0, 0)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 12, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "product-subtitle", "roleConfidence": 1, "metadata": { "exportRole": "product-subtitle", "exportComponent": "product_subtitle" } }], "detectedRole": "product-card", "roleConfidence": 1, "metadata": { "exportRole": "product-card", "exportComponent": "product_card" } }], "detectedRole": "product-list", "roleConfidence": 1, "metadata": { "exportRole": "product-list", "exportComponent": "product_grid", "exportCollection": "products" } }, { "id": "7:16", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 821, "y": 442, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:16;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 821, "y": 438, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_tt-mobile-04_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_tt-mobile-04_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_tt-mobile-04_26-04_flattened_text_baked.webp", "productAssets": ["upsellit-modal-templates-v2_tt-mobile-04_26-04-product-1.webp", "upsellit-modal-templates-v2_tt-mobile-04_26-04-product-2.webp", "upsellit-modal-templates-v2_tt-mobile-04_26-04-product-3.webp"], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "TT-Mobile-05", "folder": "upsellit-modal-templates-v2_tt-mobile-05_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "Free Shipping", "eyebrow": "You are $10 away from", "closeButton": true, "products": [], "primaryCta": { "label": "Redeem Now" } }, "ast": { "id": "1:274", "name": "TT-Mobile-05", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": 937, "y": 425, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:275", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": 1002, "y": 879.5, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:276", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": 1026, "y": 893.5, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:277", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "Free Shipping", "bounds": { "x": 937, "y": 529, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 64, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:282", "name": "Progress Bar", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "progress", "componentOverride": "progress_bar", "bounds": { "x": 1002, "y": 725, "width": 503, "height": 42 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "borderRadius": 999, "opacity": 1 }, "children": [{ "id": "1:283", "name": "Progress Fill", "type": "RECTANGLE", "visible": true, "ignored": false, "bounds": { "x": 1002, "y": 725, "width": 180, "height": 42 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(210, 6, 136)", "borderWidth": 1, "borderRadius": 999, "opacity": 1 }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "progress", "roleConfidence": 1, "metadata": { "exportRole": "progress", "exportComponent": "progress_bar" } }, { "id": "3:2", "name": "Eyebrow", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "eyebrow", "componentOverride": "eyebrow_block", "text": "You are $10 away from", "bounds": { "x": 1147, "y": 480, "width": 220, "height": 25 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontSize": 20, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "eyebrow", "roleConfidence": 1, "metadata": { "exportRole": "eyebrow", "exportComponent": "eyebrow_block" } }, { "id": "7:19", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 1501, "y": 442, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:19;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 1501, "y": 438, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_tt-mobile-05_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_tt-mobile-05_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_tt-mobile-05_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }, { "frameName": "TT-Mobile-06", "folder": "upsellit-modal-templates-v2_tt-mobile-06_26-04", "schema": { "pattern": "single", "layout": "desktop", "headline": "15% Off", "closeButton": true, "products": [], "summary": { "rows": [{ "label": "subtotal", "value": "$XX.XX" }, { "label": "discount", "value": "-$XX.XX" }, { "label": "total", "value": "$XX.XX" }], "subtotal": "$XX.XX", "discount": "-$XX.XX", "total": "$XX.XX" }, "primaryCta": { "label": "Redeem Now" } }, "ast": { "id": "1:317", "name": "TT-Mobile-06", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "modal-root", "componentOverride": "modal_shell", "bounds": { "x": 1617, "y": 425, "width": 640, "height": 660 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(62, 62, 62)", "borderWidth": 1, "opacity": 1 }, "children": [{ "id": "1:318", "name": "Primary Button", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "cta", "componentOverride": "primary_button", "bounds": { "x": 1682, "y": 879.5, "width": 527, "height": 148 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 14, "right": 24, "bottom": 14, "left": 24 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(60, 139, 217)", "borderWidth": 1, "borderRadius": 36, "opacity": 1 }, "children": [{ "id": "1:319", "name": "Primary Button Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Redeem Now", "bounds": { "x": 1706, "y": 893.5, "width": 479, "height": 120 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(255, 255, 255)", "borderWidth": 1, "opacity": 1, "color": "rgb(255, 255, 255)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "cta", "roleConfidence": 1, "metadata": { "exportRole": "cta", "exportComponent": "primary_button" } }, { "id": "1:320", "name": "Headline", "type": "TEXT", "visible": true, "ignored": false, "roleOverride": "headline", "componentOverride": "headline_block", "text": "15% Off", "bounds": { "x": 1626, "y": 518, "width": 640, "height": 154 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 128, "fontWeight": 700, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "headline", "roleConfidence": 1, "metadata": { "exportRole": "headline", "exportComponent": "headline_block" } }, { "id": "1:335", "name": "Price Table", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "summary", "componentOverride": "price_table", "bounds": { "x": 1797, "y": 687, "width": 280, "height": 96 }, "layout": { "mode": "VERTICAL", "wrap": false, "gap": 8, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:336", "name": "Subtotal", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "summary-subtotal", "componentOverride": "price_subtotal", "bounds": { "x": 1797, "y": 687, "width": 280, "height": 24 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "SPACE_BETWEEN", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:337", "name": "Subtotal Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Subtotal:", "bounds": { "x": 1797, "y": 690, "width": 140, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:338", "name": "Subtotal Value", "type": "TEXT", "visible": true, "ignored": false, "text": "$XX.XX", "bounds": { "x": 1957, "y": 690, "width": 120, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "right", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "summary-subtotal", "roleConfidence": 1, "metadata": { "exportRole": "summary-subtotal", "exportComponent": "price_subtotal" } }, { "id": "1:339", "name": "Discount", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "summary-discount", "componentOverride": "price_discount", "bounds": { "x": 1797, "y": 719, "width": 280, "height": 24 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "SPACE_BETWEEN", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:340", "name": "Discount Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Discount:", "bounds": { "x": 1797, "y": 722, "width": 140, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:341", "name": "Discount Value", "type": "TEXT", "visible": true, "ignored": false, "text": "-$XX.XX", "bounds": { "x": 1957, "y": 722, "width": 120, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "right", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "summary-discount", "roleConfidence": 1, "metadata": { "exportRole": "summary-discount", "exportComponent": "price_discount" } }, { "id": "1:342", "name": "Total", "type": "FRAME", "visible": true, "ignored": false, "roleOverride": "summary-total", "componentOverride": "price_total", "bounds": { "x": 1797, "y": 751, "width": 280, "height": 24 }, "layout": { "mode": "HORIZONTAL", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "SPACE_BETWEEN", "counterAlign": "CENTER", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderWidth": 1, "borderRadius": 0, "opacity": 1 }, "children": [{ "id": "1:343", "name": "Total Label", "type": "TEXT", "visible": true, "ignored": false, "text": "Total:", "bounds": { "x": 1797, "y": 754, "width": 140, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "left", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }, { "id": "1:344", "name": "Total Value", "type": "TEXT", "visible": true, "ignored": false, "text": "$XX.XX", "bounds": { "x": 1957, "y": 754, "width": 120, "height": 18 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "HUG" }, "style": { "background": "rgb(234, 234, 234)", "borderWidth": 1, "opacity": 1, "color": "rgb(234, 234, 234)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 14, "fontWeight": 400, "textAlign": "right", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "summary-total", "roleConfidence": 1, "metadata": { "exportRole": "summary-total", "exportComponent": "price_total" } }], "detectedRole": "summary", "roleConfidence": 1, "metadata": { "exportRole": "summary", "exportComponent": "price_table" } }, { "id": "7:22", "name": "Close Button", "type": "INSTANCE", "visible": true, "ignored": false, "roleOverride": "close-button", "componentOverride": "close_control", "bounds": { "x": 2181, "y": 442, "width": 60, "height": 60 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "borderColor": "rgb(189, 189, 189)", "borderWidth": 2, "borderRadius": 1000, "opacity": 1 }, "children": [{ "id": "I7:22;1:306", "name": "Close Label", "type": "TEXT", "visible": true, "ignored": false, "text": "×", "bounds": { "x": 2181, "y": 438, "width": 60, "height": 67 }, "layout": { "mode": "NONE", "wrap": false, "gap": 0, "padding": { "top": 0, "right": 0, "bottom": 0, "left": 0 }, "primaryAlign": "MIN", "counterAlign": "MIN", "widthMode": "FIXED", "heightMode": "FIXED" }, "style": { "background": "rgb(189, 189, 189)", "borderWidth": 1, "opacity": 1, "color": "rgb(189, 189, 189)", "fontFamily": "Merriweather Sans", "fontStyle": "normal", "fontSize": 48, "fontWeight": 400, "textAlign": "center", "textCase": "original" }, "children": [], "detectedRole": "other", "roleConfidence": 0, "metadata": {} }], "detectedRole": "close-button", "roleConfidence": 1, "metadata": { "exportRole": "close-button", "exportComponent": "close_control" } }], "detectedRole": "modal-root", "roleConfidence": 1, "metadata": { "exportRole": "modal-root", "exportComponent": "modal_shell" } }, "assets": { "mockup": "upsellit-modal-templates-v2_tt-mobile-06_26-04_mockup_1x.webp", "flattenedLive": "upsellit-modal-templates-v2_tt-mobile-06_26-04_flattened_live_text.webp", "flattenedTextBaked": "upsellit-modal-templates-v2_tt-mobile-06_26-04_flattened_text_baked.webp", "productAssets": [], "previewPages": ["index.html", "semantic.html", "flattened_live_text.html", "flattened_text_baked.html", "fallback-raw.html", "devmode.html"], "cssFiles": ["css/styles.css", "css/semantic.css", "css/flattened_live_text.css", "css/flattened_text_baked.css", "css/fallback.css"], "jsFiles": ["js/usi_js.js", "js/flattened_live_text.js", "js/flattened_text_baked.js"] } }] };
-},
 "figma/export": function(require, module, exports) {
 "use strict";
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1742,6 +1202,7 @@ const shared_1 = require("./shared");
 Object.defineProperty(exports, "getNodeChildren", { enumerable: true, get: function () { return shared_1.getNodeChildren; } });
 Object.defineProperty(exports, "getPluginMeta", { enumerable: true, get: function () { return shared_1.getPluginMeta; } });
 Object.defineProperty(exports, "setPluginMeta", { enumerable: true, get: function () { return shared_1.setPluginMeta; } });
+const index_1 = require("../analysis/index");
 function getYearMonth() {
     const now = new Date();
     const yy = String(now.getFullYear()).slice(-2);
@@ -1981,7 +1442,18 @@ async function exportFlattenedBackgroundVariant(rootNode, dynamicNodeIds, always
         return null;
     const clone = rootNode.clone();
     const pathMaps = buildPathMaps(rootNode);
-    const hidePaths = uniqueIds(dynamicNodeIds.concat(alwaysHiddenNodeIds))
+    const disclaimerIds = new Set();
+    const inputIds = new Set();
+    const normalizedRoot = (0, index_1.normalizeNode)(rootNode);
+    (0, index_1.flattenTree)(normalizedRoot).forEach(function (node) {
+        if (node.componentOverride === 'disclaimer_text') {
+            disclaimerIds.add(node.id);
+        }
+        if (node.componentOverride === 'email_input' || node.componentOverride === 'phone_input') {
+            inputIds.add(node.id);
+        }
+    });
+    const hidePaths = uniqueIds(dynamicNodeIds.concat(alwaysHiddenNodeIds).concat(Array.from(disclaimerIds)))
         .map(function (id) {
         return pathMaps.idToPath.get(id) || '';
     })
@@ -1990,14 +1462,45 @@ async function exportFlattenedBackgroundVariant(rootNode, dynamicNodeIds, always
         const cloneMaps = buildPathMaps(clone);
         for (const path of hidePaths) {
             const node = cloneMaps.pathToNode.get(path);
-            if (node)
+            if (!node)
+                continue;
+            if ('opacity' in node && typeof node.opacity === 'number') {
+                node.opacity = 0;
+            }
+            else {
                 node.visible = false;
+            }
         }
         if (removeAllText) {
             walkScenePaths(clone, function (node) {
-                if (node.type === 'TEXT')
+                if (node.type !== 'TEXT')
+                    return;
+                if ('opacity' in node && typeof node.opacity === 'number') {
+                    node.opacity = 0;
+                }
+                else {
                     node.visible = false;
+                }
             });
+            // Hide all subcomponents for background-only export
+            function hideChildren(node) {
+                if ('children' in node && Array.isArray(node.children)) {
+                    for (const child of node.children) {
+                        if (child.type === 'TEXT')
+                            continue; // Skip text nodes to keep them visible
+                        if (inputIds.has(child.id))
+                            continue; // Keep input backgrounds visible
+                        if ('opacity' in child && typeof child.opacity === 'number') {
+                            child.opacity = 0;
+                        }
+                        else {
+                            child.visible = false;
+                        }
+                        hideChildren(child);
+                    }
+                }
+            }
+            hideChildren(clone);
         }
         return await exportNodeImage(clone, fileName);
     }
@@ -2196,33 +1699,70 @@ function formatJs(source) {
         .split('\n');
     const out = [];
     let depth = 0;
-    let templateDepth = 0;
+    let inTemplate = false;
+    let templateBuffer = [];
+    function flushTemplateBuffer() {
+        if (!templateBuffer.length)
+            return;
+        while (templateBuffer.length && !templateBuffer[0].trim()) {
+            templateBuffer.shift();
+        }
+        while (templateBuffer.length && !templateBuffer[templateBuffer.length - 1].trim()) {
+            templateBuffer.pop();
+        }
+        let minIndent = null;
+        for (let index = 0; index < templateBuffer.length; index += 1) {
+            const line = templateBuffer[index];
+            if (!line.trim())
+                continue;
+            const match = line.match(/^[\t ]*/);
+            const indentText = match ? match[0] : '';
+            if (minIndent === null || indentText.length < minIndent) {
+                minIndent = indentText.length;
+            }
+        }
+        const stripCount = minIndent || 0;
+        for (let index = 0; index < templateBuffer.length; index += 1) {
+            const line = templateBuffer[index];
+            out.push(stripCount > 0 ? line.slice(stripCount) : line);
+        }
+        templateBuffer = [];
+    }
     for (let index = 0; index < lines.length; index += 1) {
         const rawLine = lines[index].replace(/\s+$/g, '');
         const trimmed = rawLine.trim();
+        if (inTemplate) {
+            if (trimmed === '`' || trimmed === '`;') {
+                flushTemplateBuffer();
+                out.push(new Array(depth + 1).join('\t') + trimmed);
+                inTemplate = false;
+                continue;
+            }
+            templateBuffer.push(rawLine);
+            continue;
+        }
         if (!trimmed) {
             if (out.length && out[out.length - 1] !== '')
                 out.push('');
             continue;
         }
-        const isTemplateContent = templateDepth > 0 && trimmed !== '`;' && trimmed !== '`';
-        if (!isTemplateContent && (/^[}\])]/.test(trimmed) || /^}\s*catch\b/.test(trimmed) || /^}\s*else\b/.test(trimmed))) {
+        if (/^[}\])]/.test(trimmed) || /^}\s*catch\b/.test(trimmed) || /^}\s*else\b/.test(trimmed)) {
             depth = Math.max(0, depth - 1);
         }
-        const indent = isTemplateContent ? depth + 1 : depth;
-        out.push(new Array(indent + 1).join('\t') + trimmed);
+        out.push(new Array(depth + 1).join('\t') + trimmed);
         const backtickCount = (trimmed.match(/`/g) || []).length;
-        if (backtickCount % 2 === 1) {
-            templateDepth = templateDepth ? 0 : 1;
+        const opensTemplate = backtickCount % 2 === 1 && /`\s*$/.test(trimmed);
+        if (opensTemplate) {
+            inTemplate = true;
+            continue;
         }
-        if (!templateDepth) {
-            const openCount = (trimmed.match(/\{/g) || []).length;
-            const closeCount = (trimmed.match(/\}/g) || []).length;
-            if (openCount > closeCount && !/^}/.test(trimmed)) {
-                depth += openCount - closeCount;
-            }
+        const openCount = (trimmed.match(/\{/g) || []).length;
+        const closeCount = (trimmed.match(/\}/g) || []).length;
+        if (openCount > closeCount && !/^}/.test(trimmed)) {
+            depth += openCount - closeCount;
         }
     }
+    flushTemplateBuffer();
     return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 function minifyHtml(source) {
@@ -2242,275 +1782,6 @@ function formatFileText(name, text) {
     if (/\.js$/i.test(name))
         return formatJs(text);
     return text;
-}
-},
-"packaging/index": function(require, module, exports) {
-"use strict";
-/* eslint-disable @typescript-eslint/no-explicit-any */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildSemanticExport = buildSemanticExport;
-const constants_1 = require("../constants");
-const index_1 = require("../analysis/index");
-const index_2 = require("../figma/index");
-const index_3 = require("../render/index");
-const string_1 = require("../utils/string");
-function formatCompactJson(value) {
-    return JSON.stringify(value);
-}
-function buildLibraryManifestEntry(entry) {
-    return {
-        frameName: entry.frameName,
-        folder: entry.folder,
-        schema: entry.schema,
-        ast: entry.ast,
-        assets: entry.assets,
-    };
-}
-function collectFlattenedHiddenAssetNodeIds(root, hideVisibleText) {
-    return (0, index_1.flattenTree)(root)
-        .filter(function (node) {
-        const definition = node.componentOverride && constants_1.COMPONENT_BY_ID[node.componentOverride]
-            ? constants_1.COMPONENT_BY_ID[node.componentOverride]
-            : constants_1.COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || 'other'];
-        if (!definition)
-            return false;
-        return hideVisibleText ? definition.render.flattened.textBaked === false : definition.render.flattened.liveText === false;
-    })
-        .map(function (node) {
-        return node.id;
-    });
-}
-async function buildExportFilesForNode(rootNode, filePrefix) {
-    const exportBaseName = (0, index_2.buildExportBaseName)(rootNode);
-    const mockupRootFolder = 'mockups';
-    const liveTextRootFolder = 'live_text_images';
-    const textBakedRootFolder = 'text_baked_images';
-    const nodeIndex = (0, index_2.buildNodeIndex)(rootNode);
-    const analysis = (0, index_1.analyzeSelection)(rootNode);
-    const sourceFrameName = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-    const pageNodes = (0, index_2.getExportPageNodes)(rootNode);
-    const assetTheme = await (0, index_2.getAssetThemeSnapshot)();
-    const mockupAsset = await (0, index_2.exportMockupPng)(rootNode, exportBaseName + '_mockup_1x.png');
-    const assets = await (0, index_2.attachProductAssets)(analysis.schema.products, nodeIndex, exportBaseName);
-    const semantic = (0, index_3.renderSemanticHtml)(analysis.schema, analysis.ast);
-    const flattenedTextAssetName = exportBaseName + '.png';
-    const flattenedLiveAssetName = exportBaseName + '.png';
-    const flattenedTextAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds.concat(collectFlattenedHiddenAssetNodeIds(analysis.ast, true))), analysis.disclaimerNodeId ? [analysis.disclaimerNodeId] : [], false, flattenedTextAssetName, index_1.uniqueIds);
-    const flattenedLiveAlwaysHidden = [];
-    if (analysis.disclaimerNodeId)
-        flattenedLiveAlwaysHidden.push(analysis.disclaimerNodeId);
-    if (analysis.summaryNodeId)
-        flattenedLiveAlwaysHidden.push(analysis.summaryNodeId);
-    const flattenedLiveAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds.concat(collectFlattenedHiddenAssetNodeIds(analysis.ast, false))), flattenedLiveAlwaysHidden, true, flattenedLiveAssetName, index_1.uniqueIds);
-    const flattenedTextVariant = (0, index_3.renderFlattenedHtml)(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true);
-    const flattenedLiveVariant = (0, index_3.renderFlattenedHtml)(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false);
-    const pageVariants = [];
-    for (let index = 0; index < pageNodes.length; index += 1) {
-        const pageAnalysis = (0, index_1.analyzeSelection)(pageNodes[index].node);
-        const pageVariant = (0, index_3.renderFlattenedHtml)(pageAnalysis.ast, pageAnalysis, '', false);
-        pageVariants.push({
-            key: pageNodes[index].key,
-            variant: pageVariant,
-            analysis: pageAnalysis,
-        });
-    }
-    const usiJsFile = (0, index_3.buildUsiJsFile)(pageVariants);
-    const images = [];
-    if (mockupAsset)
-        images.push({ name: mockupAsset.name, href: '../' + mockupRootFolder + '/' + mockupAsset.name });
-    if (flattenedLiveAsset)
-        images.push({ name: flattenedLiveAsset.name, href: '../' + liveTextRootFolder + '/' + flattenedLiveAsset.name });
-    if (flattenedTextAsset)
-        images.push({ name: flattenedTextAsset.name, href: '../' + textBakedRootFolder + '/' + flattenedTextAsset.name });
-    for (let index = 0; index < assets.length; index += 1) {
-        images.push({ name: assets[index].name, href: assets[index].name });
-    }
-    const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-    const formattedDevCss = (0, string_1.formatFileText)('devmode.css', (0, index_3.extractCampaignCss)(flattenedTextVariant.css));
-    const formattedDevJs = (0, string_1.formatFileText)('devmode.js', flattenedTextVariant.js);
-    const previewHtml = (0, index_3.renderPreviewIndex)(previewTitle, images, {
-        bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
-        cssSource: formattedDevCss,
-        jsSource: formattedDevJs,
-    });
-    const prefixed = function (name) {
-        return filePrefix ? filePrefix + '/' + name : name;
-    };
-    const prefixedBinary = function (file) {
-        if ('text' in file)
-            return file;
-        return {
-            name: prefixed(file.name),
-            base64: file.base64,
-            mime: file.mime,
-        };
-    };
-    const rootBinary = function (folderName, file) {
-        if ('text' in file)
-            return file;
-        return {
-            name: folderName + '/' + file.name,
-            base64: file.base64,
-            mime: file.mime,
-        };
-    };
-    const files = [
-        { name: prefixed('index.html'), text: previewHtml },
-        { name: prefixed('css/styles.css'), text: semantic.css },
-        { name: prefixed('semantic.html'), text: semantic.html },
-        { name: prefixed('css/semantic.css'), text: semantic.css },
-        { name: prefixed('flattened_text_baked.html'), text: flattenedTextVariant.html },
-        { name: prefixed('css/flattened_text_baked.css'), text: flattenedTextVariant.css },
-        { name: prefixed('js/flattened_text_baked.js'), text: flattenedTextVariant.js },
-        { name: prefixed('flattened_live_text.html'), text: flattenedLiveVariant.html },
-        { name: prefixed('css/flattened_live_text.css'), text: flattenedLiveVariant.css },
-        { name: prefixed('js/usi_js.js'), text: usiJsFile },
-        ...(mockupAsset ? [rootBinary(mockupRootFolder, mockupAsset)] : []),
-        ...(flattenedTextAsset ? [rootBinary(textBakedRootFolder, flattenedTextAsset)] : []),
-        ...(flattenedLiveAsset ? [rootBinary(liveTextRootFolder, flattenedLiveAsset)] : []),
-        ...assets.map(prefixedBinary),
-    ];
-    const formattedFiles = files.map(function (file) {
-        if (!('text' in file))
-            return file;
-        return {
-            name: file.name,
-            text: (0, string_1.formatFileText)(file.name, file.text),
-        };
-    });
-    return {
-        files: formattedFiles,
-        report: analysis.report,
-        schema: analysis.schema,
-        images: images,
-        importManifest: {
-            frameName: sourceFrameName,
-            folder: filePrefix || exportBaseName,
-            schema: analysis.schema,
-            ast: analysis.ast,
-            assetTheme: assetTheme,
-            assets: {
-                mockup: mockupAsset ? mockupRootFolder + '/' + mockupAsset.name : undefined,
-                flattenedLive: flattenedLiveAsset ? liveTextRootFolder + '/' + flattenedLiveAsset.name : undefined,
-                flattenedTextBaked: flattenedTextAsset ? textBakedRootFolder + '/' + flattenedTextAsset.name : undefined,
-                productAssets: assets.map(function (asset) { return asset.name; }),
-                previewPages: ['index.html', 'semantic.html', 'flattened_live_text.html', 'flattened_text_baked.html'],
-                cssFiles: ['css/styles.css', 'css/semantic.css', 'css/flattened_live_text.css', 'css/flattened_text_baked.css'],
-                jsFiles: ['js/usi_js.js', 'js/flattened_text_baked.js'],
-            },
-        },
-    };
-}
-async function buildSemanticExport(rootNodes) {
-    const nodes = Array.isArray(rootNodes) ? rootNodes.filter(Boolean) : rootNodes ? [rootNodes] : [];
-    if (!nodes.length) {
-        throw new Error('No exportable frames found on the current page.');
-    }
-    if (nodes.length === 1) {
-        const exportBaseName = (0, index_2.buildExportBaseName)(nodes[0]);
-        const single = await buildExportFilesForNode(nodes[0], exportBaseName);
-        return {
-            packageFileName: (0, index_2.buildExportPackageName)(nodes),
-            files: [
-                {
-                    name: 'index.html',
-                    text: (0, string_1.formatFileText)('index.html', (0, index_3.renderMultiExportIndex)([
-                        {
-                            name: nodes[0] && nodes[0].name ? String(nodes[0].name) : exportBaseName,
-                            href: exportBaseName + '/index.html',
-                            images: single.images.map(function (image) {
-                                return {
-                                    name: image.name,
-                                    href: image.href.indexOf('../') === 0
-                                        ? image.href.replace(/^\.\.\//, '')
-                                        : exportBaseName + '/' + image.href,
-                                };
-                            }),
-                        },
-                    ])),
-                },
-                {
-                    name: 'library_manifest.json',
-                    text: formatCompactJson({
-                        assetTheme: single.importManifest.assetTheme,
-                        entries: [buildLibraryManifestEntry(single.importManifest)],
-                    }),
-                },
-                ...single.files,
-            ],
-            report: single.report,
-            schema: single.schema,
-        };
-    }
-    const allFiles = [];
-    const exportEntries = [];
-    const mockupEntries = [];
-    const importEntries = [];
-    let sharedAssetTheme = [];
-    for (let index = 0; index < nodes.length; index += 1) {
-        const node = nodes[index];
-        const exportBaseName = (0, index_2.buildExportBaseName)(node);
-        const result = await buildExportFilesForNode(node, exportBaseName);
-        allFiles.push(...result.files);
-        importEntries.push(result.importManifest);
-        if (!sharedAssetTheme.length)
-            sharedAssetTheme = result.importManifest.assetTheme;
-        exportEntries.push({
-            name: node && node.name ? String(node.name) : exportBaseName,
-            href: exportBaseName + '/index.html',
-            images: result.images.map(function (image) {
-                return {
-                    name: image.name,
-                    href: image.href.indexOf('../') === 0
-                        ? image.href.replace(/^\.\.\//, '')
-                        : exportBaseName + '/' + image.href,
-                };
-            }),
-        });
-        const mockupImage = result.images.find(function (image) {
-            return /_mockup_1x\.(png|webp)$/i.test(image.name);
-        });
-        if (mockupImage) {
-            mockupEntries.push({
-                name: node && node.name ? String(node.name) : exportBaseName,
-                href: mockupImage.href.replace(/^\.\.\//, ''),
-            });
-        }
-    }
-    allFiles.unshift({
-        name: 'index.html',
-        text: (0, string_1.formatFileText)('index.html', (0, index_3.renderMultiExportIndex)(exportEntries)),
-    });
-    allFiles.unshift({
-        name: 'library_manifest.json',
-        text: formatCompactJson({
-            assetTheme: sharedAssetTheme,
-            entries: importEntries.map(buildLibraryManifestEntry),
-        }),
-    });
-    if (mockupEntries.length) {
-        allFiles.unshift({
-            name: 'mockup_review.html',
-            text: (0, string_1.formatFileText)('mockup_review.html', (0, index_3.renderMockupReviewIndex)(mockupEntries)),
-        });
-    }
-    return {
-        packageFileName: (0, index_2.buildExportPackageName)(nodes),
-        files: allFiles,
-        report: {
-            pattern: 'multi_frame',
-            warnings: [],
-        },
-        schema: {
-            exportCount: nodes.length,
-            exports: nodes.map(function (node) {
-                return {
-                    name: node && node.name ? String(node.name) : 'frame',
-                    folder: (0, index_2.buildExportBaseName)(node),
-                };
-            }),
-        },
-    };
 }
 },
 "analysis/index": function(require, module, exports) {
@@ -2799,12 +2070,11 @@ function resolvePattern(root, productCount, hasSummary) {
         return 'grid';
     return productCount > 1 ? 'carousel' : 'single';
 }
-function collectWarnings(schema) {
+function collectWarnings() {
+    //schema: PromoExport
     const warnings = [];
-    if (!schema.headline)
-        warnings.push('No headline component found.');
-    if (!schema.primaryCta)
-        warnings.push('No primary CTA component found.');
+    // if (!schema.headline) warnings.push('No headline component found.');
+    // if (!schema.primaryCta) warnings.push('No primary CTA component found.');
     return warnings;
 }
 function buildProduct(card) {
@@ -2860,7 +2130,7 @@ function analyzeSelection(rootNode) {
         schema: schema,
         report: {
             pattern: schema.pattern,
-            warnings: collectWarnings(schema),
+            warnings: collectWarnings(), //schema
         },
         roleMap: roleMap,
         dynamicNodeIds: collectDynamicNodeIds(ast),
@@ -2872,6 +2142,235 @@ function analyzeSelection(rootNode) {
         productCardNodeIds: productCards.map(function (card) { return card.id; }),
         primaryCtaNodeId: primaryCtaNode ? primaryCtaNode.id : undefined,
         disclaimerNodeId: disclaimerNode ? disclaimerNode.id : undefined,
+    };
+}
+},
+"packaging/index": function(require, module, exports) {
+"use strict";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.buildSemanticExport = buildSemanticExport;
+const index_1 = require("../analysis/index");
+const index_2 = require("../figma/index");
+const index_3 = require("../render/index");
+const string_1 = require("../utils/string");
+async function buildExportFilesForNode(rootNode, filePrefix) {
+    const exportBaseName = (0, index_2.buildExportBaseName)(rootNode);
+    const mockupRootFolder = 'mockups';
+    const liveTextRootFolder = 'live_text_images';
+    const textBakedRootFolder = 'text_baked_images';
+    const nodeIndex = (0, index_2.buildNodeIndex)(rootNode);
+    const analysis = (0, index_1.analyzeSelection)(rootNode);
+    const sourceFrameName = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
+    const pageNodes = (0, index_2.getExportPageNodes)(rootNode);
+    const assetTheme = await (0, index_2.getAssetThemeSnapshot)();
+    const mockupAsset = await (0, index_2.exportMockupPng)(rootNode, exportBaseName + '_mockup_1x.png');
+    const assets = await (0, index_2.attachProductAssets)(analysis.schema.products, nodeIndex, exportBaseName);
+    //const semantic = renderSemanticHtml(analysis.schema, analysis.ast);
+    const flattenedTextAssetName = exportBaseName + '.png';
+    const flattenedLiveAssetName = exportBaseName + '.png';
+    const flattenedTextAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds), [], false, flattenedTextAssetName, index_1.uniqueIds);
+    const flattenedLiveAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds), [], true, flattenedLiveAssetName, index_1.uniqueIds);
+    const flattenedTextVariant = (0, index_3.renderFlattenedHtml)(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true);
+    const flattenedLiveVariant = (0, index_3.renderFlattenedHtml)(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false);
+    const pageVariants = [];
+    for (let index = 0; index < pageNodes.length; index += 1) {
+        const pageAnalysis = (0, index_1.analyzeSelection)(pageNodes[index].node);
+        const pageVariant = (0, index_3.renderFlattenedHtml)(pageAnalysis.ast, pageAnalysis, '', false);
+        pageVariants.push({
+            key: pageNodes[index].key,
+            variant: pageVariant,
+            analysis: pageAnalysis,
+        });
+    }
+    const usiJsFile = (0, index_3.buildUsiJsFile)(pageVariants);
+    const images = [];
+    if (mockupAsset)
+        images.push({ name: mockupAsset.name, href: '../' + mockupRootFolder + '/' + mockupAsset.name });
+    if (flattenedLiveAsset)
+        images.push({ name: flattenedLiveAsset.name, href: '../' + liveTextRootFolder + '/' + flattenedLiveAsset.name });
+    if (flattenedTextAsset)
+        images.push({ name: flattenedTextAsset.name, href: '../' + textBakedRootFolder + '/' + flattenedTextAsset.name });
+    for (let index = 0; index < assets.length; index += 1) {
+        images.push({ name: assets[index].name, href: assets[index].name });
+    }
+    const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
+    const formattedDevCss = (0, string_1.formatFileText)('devmode.css', (0, index_3.extractCampaignCss)(flattenedTextVariant.css));
+    const formattedDevJs = (0, string_1.formatFileText)('devmode.js', flattenedTextVariant.js);
+    // console.log(formattedDevCss);
+    // console.log(formattedDevJs);
+    const previewHtml = (0, index_3.renderPreviewIndex)(previewTitle, images, {
+        bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
+        cssSource: formattedDevCss,
+        jsSource: formattedDevJs
+    });
+    console.log(previewHtml);
+    const prefixed = function (name) {
+        return filePrefix ? filePrefix + '/' + name : name;
+    };
+    const prefixedBinary = function (file) {
+        if ('text' in file)
+            return file;
+        return {
+            name: prefixed(file.name),
+            base64: file.base64,
+            mime: file.mime,
+        };
+    };
+    const rootBinary = function (folderName, file) {
+        if ('text' in file)
+            return file;
+        return {
+            name: folderName + '/' + file.name,
+            base64: file.base64,
+            mime: file.mime,
+        };
+    };
+    const files = [
+        { name: prefixed('index.html'), text: previewHtml },
+        { name: prefixed('flattened_text_baked.html'), text: flattenedTextVariant.html },
+        { name: prefixed('css/flattened_text_baked.css'), text: flattenedTextVariant.css },
+        { name: prefixed('js/flattened_text_baked.js'), text: flattenedTextVariant.js },
+        { name: prefixed('flattened_live_text.html'), text: flattenedLiveVariant.html },
+        { name: prefixed('css/flattened_live_text.css'), text: flattenedLiveVariant.css },
+        { name: prefixed('js/usi_js.js'), text: usiJsFile },
+        ...(mockupAsset ? [rootBinary(mockupRootFolder, mockupAsset)] : []),
+        ...(flattenedTextAsset ? [rootBinary(textBakedRootFolder, flattenedTextAsset)] : []),
+        ...(flattenedLiveAsset ? [rootBinary(liveTextRootFolder, flattenedLiveAsset)] : []),
+        ...assets.map(prefixedBinary),
+    ];
+    const formattedFiles = files.map(function (file) {
+        if (!('text' in file))
+            return file;
+        // Skip formatting for CSS and JS files to prevent output corruption
+        const isCssOrJs = file.name.endsWith('.css') || file.name.endsWith('.js');
+        if (isCssOrJs) {
+            return file;
+        }
+        return {
+            name: file.name,
+            text: file.text //formatFileText(file.name, file.text),
+        };
+    });
+    console.log(formattedFiles);
+    return {
+        files: formattedFiles,
+        report: analysis.report,
+        schema: analysis.schema,
+        images: images,
+        importManifest: {
+            frameName: sourceFrameName,
+            folder: filePrefix || exportBaseName,
+            schema: analysis.schema,
+            ast: analysis.ast,
+            assetTheme: assetTheme,
+            assets: {
+                mockup: mockupAsset ? mockupRootFolder + '/' + mockupAsset.name : undefined,
+                flattenedLive: flattenedLiveAsset ? liveTextRootFolder + '/' + flattenedLiveAsset.name : undefined,
+                flattenedTextBaked: flattenedTextAsset ? textBakedRootFolder + '/' + flattenedTextAsset.name : undefined,
+                productAssets: assets.map(function (asset) { return asset.name; }),
+                previewPages: ['index.html', 'flattened_live_text.html', 'flattened_text_baked.html'],
+                cssFiles: ['css/styles.css', 'css/flattened_live_text.css', 'css/flattened_text_baked.css'],
+                jsFiles: ['js/usi_js.js', 'js/flattened_text_baked.js'],
+            },
+        },
+    };
+}
+async function buildSemanticExport(rootNodes) {
+    const nodes = Array.isArray(rootNodes) ? rootNodes.filter(Boolean) : rootNodes ? [rootNodes] : [];
+    if (!nodes.length) {
+        throw new Error('No exportable frames found on the current page.');
+    }
+    if (nodes.length === 1) {
+        const exportBaseName = (0, index_2.buildExportBaseName)(nodes[0]);
+        const single = await buildExportFilesForNode(nodes[0], exportBaseName);
+        return {
+            packageFileName: (0, index_2.buildExportPackageName)(nodes),
+            files: [
+                {
+                    name: 'index.html',
+                    text: (0, string_1.formatFileText)('index.html', (0, index_3.renderMultiExportIndex)([
+                        {
+                            name: nodes[0] && nodes[0].name ? String(nodes[0].name) : exportBaseName,
+                            href: exportBaseName + '/index.html',
+                            images: single.images.map(function (image) {
+                                return {
+                                    name: image.name,
+                                    href: image.href.indexOf('../') === 0
+                                        ? image.href.replace(/^\.\.\//, '')
+                                        : exportBaseName + '/' + image.href,
+                                };
+                            }),
+                        },
+                    ])),
+                },
+                ...single.files,
+            ],
+            report: single.report,
+            schema: single.schema,
+        };
+    }
+    const allFiles = [];
+    const exportEntries = [];
+    const mockupEntries = [];
+    const importEntries = [];
+    let sharedAssetTheme = [];
+    for (let index = 0; index < nodes.length; index += 1) {
+        const node = nodes[index];
+        const exportBaseName = (0, index_2.buildExportBaseName)(node);
+        const result = await buildExportFilesForNode(node, exportBaseName);
+        allFiles.push(...result.files);
+        importEntries.push(result.importManifest);
+        if (!sharedAssetTheme.length)
+            sharedAssetTheme = result.importManifest.assetTheme;
+        exportEntries.push({
+            name: node && node.name ? String(node.name) : exportBaseName,
+            href: exportBaseName + '/index.html',
+            images: result.images.map(function (image) {
+                return {
+                    name: image.name,
+                    href: image.href.indexOf('../') === 0
+                        ? image.href.replace(/^\.\.\//, '')
+                        : exportBaseName + '/' + image.href,
+                };
+            }),
+        });
+        const mockupImage = result.images.find(function (image) {
+            return /_mockup_1x\.(png|webp)$/i.test(image.name);
+        });
+        if (mockupImage) {
+            mockupEntries.push({
+                name: node && node.name ? String(node.name) : exportBaseName,
+                href: mockupImage.href.replace(/^\.\.\//, ''),
+            });
+        }
+    }
+    allFiles.unshift({
+        name: 'index.html',
+        text: (0, string_1.formatFileText)('index.html', (0, index_3.renderMultiExportIndex)(exportEntries)),
+    });
+    if (mockupEntries.length) {
+        allFiles.unshift({
+            name: 'mockup_review.html',
+            text: (0, string_1.formatFileText)('mockup_review.html', (0, index_3.renderMockupReviewIndex)(mockupEntries)),
+        });
+    }
+    return {
+        packageFileName: (0, index_2.buildExportPackageName)(nodes),
+        files: allFiles,
+        report: {
+            pattern: 'multi_frame',
+            warnings: [],
+        },
+        schema: {
+            exportCount: nodes.length,
+            exports: nodes.map(function (node) {
+                return {
+                    name: node && node.name ? String(node.name) : 'frame',
+                    folder: (0, index_2.buildExportBaseName)(node),
+                };
+            }),
+        },
     };
 }
 },
@@ -2892,505 +2391,13 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.renderFlattenedHtml = exports.buildUsiJsFile = exports.extractCampaignCss = exports.renderSemanticHtml = void 0;
-var semantic_1 = require("./semantic");
-Object.defineProperty(exports, "renderSemanticHtml", { enumerable: true, get: function () { return semantic_1.renderSemanticHtml; } });
+exports.renderFlattenedHtml = exports.buildUsiJsFile = exports.extractCampaignCss = void 0;
 __exportStar(require("./preview-pages"), exports);
 var devmode_1 = require("./devmode");
 Object.defineProperty(exports, "extractCampaignCss", { enumerable: true, get: function () { return devmode_1.extractCampaignCss; } });
 var flattened_1 = require("./flattened");
 Object.defineProperty(exports, "buildUsiJsFile", { enumerable: true, get: function () { return flattened_1.buildUsiJsFile; } });
 Object.defineProperty(exports, "renderFlattenedHtml", { enumerable: true, get: function () { return flattened_1.renderFlattenedHtml; } });
-},
-"render/semantic": function(require, module, exports) {
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.renderSemanticHtml = renderSemanticHtml;
-exports.renderRawFallback = renderRawFallback;
-const string_1 = require("../utils/string");
-const constants_1 = require("../constants");
-const css_1 = require("../utils/css");
-const index_1 = require("../analysis/index");
-function renderProductCard(product) {
-    const imageHtml = product.imageAsset
-        ? '<img class="usi_product_image" src="' +
-            (0, string_1.escapeHtml)(product.imageAsset) +
-            '" alt="' +
-            (0, string_1.escapeHtml)(product.imageAlt || product.title || 'Product image') +
-            '" />'
-        : '<div class="usi_product_image usi_product_image_placeholder" aria-hidden="true"></div>';
-    const subtitleHtml = product.subtitle ? '<p class="usi_product_meta">' + (0, string_1.escapeHtml)(product.subtitle) + '</p>' : '';
-    const priceHtml = product.price ? '<p class="usi_product_price">' + (0, string_1.escapeHtml)(product.price) + '</p>' : '';
-    const ctaHtml = product.cta ? '<button class="usi_product_cta" type="button">' + (0, string_1.escapeHtml)(product.cta) + '</button>' : '';
-    return ('<article class="usi_product_card">' +
-        imageHtml +
-        '<section class="usi_product_body">' +
-        '<h3 class="usi_product_title">' +
-        (0, string_1.escapeHtml)(product.title || 'Product') +
-        '</h3>' +
-        subtitleHtml +
-        priceHtml +
-        ctaHtml +
-        '</section>' +
-        '</article>');
-}
-function hasInsertedComponent(root, componentId) {
-    return (0, index_1.flattenTree)(root).some(function (node) {
-        return !node.ignored && node.componentOverride === componentId;
-    });
-}
-function renderSummary(summary) {
-    if (!summary || !summary.rows.length)
-        return '';
-    const rowsHtml = summary.rows
-        .map(function (row) {
-        return ('<div class="usi_summary_row"><span>' +
-            (0, string_1.escapeHtml)(row.label) +
-            '</span><strong>' +
-            (0, string_1.escapeHtml)(row.value || '') +
-            '</strong></div>');
-    })
-        .join('');
-    return '<section class="usi_summary" aria-label="Cart summary">' + rowsHtml + '</section>';
-}
-function componentDefinitionForNode(node) {
-    if (node.componentOverride && constants_1.COMPONENT_BY_ID[node.componentOverride]) {
-        return constants_1.COMPONENT_BY_ID[node.componentOverride];
-    }
-    return constants_1.COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || 'other'];
-}
-function componentText(node, definition) {
-    const text = (0, index_1.collectText)(node) || node.text || node.name || '';
-    if (text)
-        return text;
-    return definition && definition.render.fallbackText ? definition.render.fallbackText : '';
-}
-function renderExplicitComponentNode(node) {
-    const definition = componentDefinitionForNode(node);
-    if (!definition)
-        return '';
-    const tag = definition.render.htmlTag;
-    const className = definition.render.className;
-    const text = componentText(node, definition);
-    const kind = definition.render.kind;
-    if (kind === 'input') {
-        return '<label class="' + className + '"><span class="usi_field_label">' + (0, string_1.escapeHtml)(node.name || definition.label) + '</span><input class="usi_field_input" type="' + (0, string_1.escapeHtml)(definition.render.inputType || 'text') + '" placeholder="' + (0, string_1.escapeHtml)(text) + '" /></label>';
-    }
-    if (kind === 'survey') {
-        const children = node.children.filter(function (child) { return !child.ignored && child.visible; });
-        const prompt = children[0] ? componentText(children[0]) : text;
-        const options = (children.length > 1 ? children.slice(1) : [])
-            .map(function (child) {
-            return '<button class="usi_survey_option" type="button">' + (0, string_1.escapeHtml)(componentText(child)) + '</button>';
-        })
-            .join('') || '<button class="usi_survey_option" type="button">Option 1</button><button class="usi_survey_option" type="button">Option 2</button>';
-        return '<section class="' + className + '"><p class="usi_survey_prompt">' + (0, string_1.escapeHtml)(prompt) + '</p><div class="usi_survey_options">' + options + '</div></section>';
-    }
-    if (kind === 'coupon') {
-        const childrenText = node.children.map(function (child) { return componentText(child); }).filter(Boolean);
-        const code = childrenText[0] || text || definition.render.fallbackText || 'SAVE15';
-        const label = childrenText[1] || definition.render.buttonText || 'Copy Code';
-        return '<section class="' + className + '"><div class="usi_coupon_code">' + (0, string_1.escapeHtml)(code) + '</div><button class="usi_coupon_button" type="button">' + (0, string_1.escapeHtml)(label) + '</button></section>';
-    }
-    if (kind === 'optin') {
-        return '<label class="' + className + '"><input class="usi_optin_input" type="checkbox" /><span class="usi_optin_label">' + (0, string_1.escapeHtml)(text) + '</span></label>';
-    }
-    if (kind === 'countdown') {
-        return '<div class="' + className + '">' + (0, string_1.escapeHtml)(text || '09:59') + '</div>';
-    }
-    if (kind === 'progress') {
-        return '<div class="' + className + '"><div class="usi_progress_fill"></div></div>';
-    }
-    if (kind === 'media') {
-        if (tag === 'hr') {
-            return '<hr class="' + className + '" />';
-        }
-        return '<div class="' + className + '" aria-hidden="true"></div>';
-    }
-    if (kind === 'button' || tag === 'button') {
-        return '<button class="' + className + '" type="button">' + (0, string_1.escapeHtml)(text || definition.render.buttonText || definition.label) + '</button>';
-    }
-    return '<' + tag + ' class="' + className + '">' + (0, string_1.escapeHtml)(text) + '</' + tag + '>';
-}
-function renderExtraRegionNodes(root, region, excludedIds) {
-    const rendered = [];
-    (function walk(node) {
-        if (node.ignored || excludedIds.indexOf(node.id) !== -1)
-            return;
-        const definition = componentDefinitionForNode(node);
-        if (definition && definition.render.region === region) {
-            rendered.push(renderExplicitComponentNode(node));
-            return;
-        }
-        for (let index = 0; index < node.children.length; index += 1) {
-            walk(node.children[index]);
-        }
-    })(root);
-    return rendered.join('');
-}
-function renderExtraRegionCss(root, region, excludedIds) {
-    const nodes = [];
-    (function walk(node) {
-        if (node.ignored || excludedIds.indexOf(node.id) !== -1)
-            return;
-        const definition = componentDefinitionForNode(node);
-        if (definition && definition.render.region === region) {
-            nodes.push(node);
-            return;
-        }
-        for (let index = 0; index < node.children.length; index += 1) {
-            walk(node.children[index]);
-        }
-    })(root);
-    return nodes
-        .map(function (node, index) {
-        const definition = componentDefinitionForNode(node);
-        if (!definition)
-            return '';
-        return semanticNodeRule('.' + definition.render.className.split(' ')[0] + ':nth-of-type(' + (index + 1) + ')', node, {});
-    })
-        .join('');
-}
-function inlineStyleAttr(style) {
-    const css = (0, css_1.cssDeclarations)(style);
-    return css ? ' style="' + (0, string_1.escapeHtml)(css) + '"' : '';
-}
-function combineBounds(nodes) {
-    const filtered = nodes.filter(Boolean);
-    if (!filtered.length)
-        return undefined;
-    let left = filtered[0].bounds.x;
-    let top = filtered[0].bounds.y;
-    let right = filtered[0].bounds.x + filtered[0].bounds.width;
-    let bottom = filtered[0].bounds.y + filtered[0].bounds.height;
-    for (let index = 1; index < filtered.length; index += 1) {
-        left = Math.min(left, filtered[index].bounds.x);
-        top = Math.min(top, filtered[index].bounds.y);
-        right = Math.max(right, filtered[index].bounds.x + filtered[index].bounds.width);
-        bottom = Math.max(bottom, filtered[index].bounds.y + filtered[index].bounds.height);
-    }
-    return { x: left, y: top, width: right - left, height: bottom - top };
-}
-function regionRule(selector, root, bounds) {
-    if (!bounds)
-        return '';
-    return selector + ' { ' + (0, css_1.cssDeclarations)({
-        width: String((bounds.width / root.bounds.width) * 100) + '%',
-        'min-height': String((bounds.height / root.bounds.height) * 100) + '%',
-    }) + ' }\n';
-}
-function buttonStyleDeclarations(node) {
-    return {
-        'background-color': node.style.background || 'transparent',
-        color: node.style.color || '#111111',
-        border: node.style.borderColor
-            ? (node.style.borderWidth || 1) + 'px solid ' + node.style.borderColor
-            : '1px solid rgba(0, 0, 0, 0.25)',
-        'border-radius': node.style.borderRadius != null ? node.style.borderRadius + 'px' : undefined,
-        opacity: node.style.opacity,
-        'font-size': node.style.fontSize ? node.style.fontSize + 'px' : undefined,
-        'font-weight': node.style.fontWeight,
-        'line-height': (0, css_1.lineHeightCss)(node),
-        'letter-spacing': node.style.letterSpacing ? node.style.letterSpacing + 'px' : undefined,
-        'text-align': node.style.textAlign,
-        'text-transform': (0, css_1.textTransformFromCase)(node.style.textCase),
-    };
-}
-function semanticBoxInlineStyle(node) {
-    if (!node)
-        return '';
-    return inlineStyleAttr({
-        'background-color': node.style.background,
-        color: node.style.color,
-        border: node.style.borderColor ? (node.style.borderWidth || 1) + 'px solid ' + node.style.borderColor : undefined,
-        'border-radius': node.style.borderRadius != null ? node.style.borderRadius + 'px' : undefined,
-        opacity: node.style.opacity,
-    });
-}
-function semanticNodeRule(selector, node, extra) {
-    if (!node)
-        return '';
-    const declarations = (0, css_1.cssDeclarations)(Object.assign({
-        'background-color': node.style.background,
-        color: node.style.color,
-        border: node.style.borderColor ? String(node.style.borderWidth || 1) + 'px solid ' + node.style.borderColor : undefined,
-        'border-radius': node.style.borderRadius != null ? String(node.style.borderRadius) + 'px' : undefined,
-        opacity: node.style.opacity,
-        'font-family': node.style.fontFamily ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif' : undefined,
-        'font-style': node.style.fontStyle,
-        'font-size': node.style.fontSize ? String(node.style.fontSize) + 'px' : undefined,
-        'font-weight': node.style.fontWeight,
-        'line-height': node.style.lineHeight ? String(node.style.lineHeight) + 'px' : undefined,
-        'letter-spacing': node.style.letterSpacing ? String(node.style.letterSpacing) + 'px' : undefined,
-        'text-align': node.style.textAlign,
-        'text-transform': (0, css_1.textTransformFromCase)(node.style.textCase),
-    }, extra));
-    return declarations ? selector + ' { ' + declarations + ' }\n' : '';
-}
-function renderSemanticHtml(schema, ast) {
-    const frameScale = (0, css_1.getProductionScaleForFrame)(ast.bounds);
-    const displayWidth = (0, css_1.scalePx)(ast.bounds.width, frameScale) || ast.bounds.width;
-    const displayHeight = (0, css_1.scalePx)(ast.bounds.height, frameScale) || ast.bounds.height;
-    const headlineNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'headline', 0.35));
-    const subtextNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'subtext', 0.3));
-    const eyebrowNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'eyebrow', 0.3));
-    const ctaNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'cta', 0.35));
-    const disclaimerNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'disclaimer', 0.3));
-    const productListNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'product-list', 0.35));
-    const productCardNodes = (0, index_1.findNodesByRole)(ast, 'product-card', 0.35);
-    const summaryNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'summary', 0.35));
-    const closeNode = (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(ast, 'close-button', 0.35));
-    const mainBounds = combineBounds([eyebrowNode, headlineNode, subtextNode, ctaNode]);
-    const productsBounds = productListNode ? productListNode.bounds : combineBounds(productCardNodes);
-    const rightBounds = combineBounds([productListNode, summaryNode]);
-    const hasSideRail = !!mainBounds && !!rightBounds && rightBounds.x > mainBounds.x + (mainBounds.width * 0.65);
-    const topHero = !!mainBounds && !!productsBounds && productsBounds.y > mainBounds.y + (mainBounds.height * 0.65);
-    const gridColumns = productsBounds && productCardNodes.length > 1
-        ? Math.max(1, Math.min(productCardNodes.length, Math.round(productsBounds.width / Math.max(productCardNodes[0].bounds.width, 1))))
-        : Math.max(1, Math.min(schema.products.length || 1, 3));
-    const productGap = productCardNodes.length > 1
-        ? Math.max(8, Math.round((productsBounds ? productsBounds.width : ast.bounds.width) * 0.03))
-        : 12;
-    const closeStyle = closeNode
-        ? inlineStyleAttr({
-            left: String(((closeNode.bounds.x - ast.bounds.x) / ast.bounds.width) * 100) + '%',
-            top: String(((closeNode.bounds.y - ast.bounds.y) / ast.bounds.height) * 100) + '%',
-            width: String((closeNode.bounds.width / ast.bounds.width) * 100) + '%',
-            height: String((closeNode.bounds.height / ast.bounds.height) * 100) + '%',
-        })
-        : '';
-    const productWrapperClass = schema.pattern === 'carousel'
-        ? 'usi_products usi_products_carousel'
-        : schema.products.length <= 1
-            ? 'usi_products usi_products_single'
-            : 'usi_products usi_products_grid';
-    const layoutClass = hasSideRail ? 'usi_layout_split' : topHero ? 'usi_layout_stacked' : 'usi_layout_flow';
-    const closeHtml = schema.closeButton ? '<button id="usi_close" class="usi_close_button" type="button" aria-label="Close"' + closeStyle + '>×</button>' : '';
-    const eyebrowHtml = schema.eyebrow ? '<p class="usi_eyebrow">' + (0, string_1.escapeHtml)(schema.eyebrow) + '</p>' : '';
-    const headlineHtml = schema.headline ? '<h1 class="usi_headline">' + (0, string_1.escapeHtml)(schema.headline) + '</h1>' : '';
-    const subtextHtml = schema.subtext ? '<p class="usi_subtext">' + (0, string_1.escapeHtml)(schema.subtext) + '</p>' : '';
-    const primaryCtaHtml = schema.primaryCta
-        ? '<button id="usi_primary_cta" class="usi_primary_cta" type="button">' + (0, string_1.escapeHtml)(schema.primaryCta.label) + '</button>'
-        : '';
-    const disclaimerHtml = schema.disclaimer ? '<p class="usi_disclaimer">' + (0, string_1.escapeHtml)(schema.disclaimer) + '</p>' : '';
-    const summaryHtml = renderSummary(schema.summary);
-    const productsHtml = schema.products.length
-        ? '<section class="' + productWrapperClass + '" aria-label="Products">' + schema.products.map(renderProductCard).join('') + '</section>'
-        : '';
-    const hasProducts = !!schema.products.length && !!productCardNodes.length;
-    const hasSummary = !!schema.summary && !!summaryNode;
-    const hasEmailInput = hasInsertedComponent(ast, 'email_input');
-    const hasPhoneInput = hasInsertedComponent(ast, 'phone_input');
-    const hasSurvey = hasInsertedComponent(ast, 'survey_block');
-    const hasCoupon = hasInsertedComponent(ast, 'copy_coupon');
-    const hasOptin = hasInsertedComponent(ast, 'optin_component');
-    const hasCountdown = hasInsertedComponent(ast, 'countdown_timer');
-    const hasProgress = hasInsertedComponent(ast, 'progress_bar');
-    const hasSecondaryCta = hasInsertedComponent(ast, 'no_thanks_button');
-    const excludedIds = [
-        headlineNode ? headlineNode.id : '',
-        subtextNode ? subtextNode.id : '',
-        eyebrowNode ? eyebrowNode.id : '',
-        ctaNode ? ctaNode.id : '',
-        disclaimerNode ? disclaimerNode.id : '',
-        summaryNode ? summaryNode.id : '',
-        closeNode ? closeNode.id : '',
-    ].concat(productCardNodes.map(function (node) { return node.id; })).filter(Boolean);
-    const extraMainHtml = renderExtraRegionNodes(ast, 'main', excludedIds);
-    const extraAsideHtml = renderExtraRegionNodes(ast, 'aside', excludedIds);
-    const extraUtilityHtml = renderExtraRegionNodes(ast, 'utility', excludedIds);
-    const extraCss = renderExtraRegionCss(ast, 'main', excludedIds) +
-        renderExtraRegionCss(ast, 'aside', excludedIds) +
-        renderExtraRegionCss(ast, 'utility', excludedIds);
-    const html = '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Semantic promo export</title><link rel="stylesheet" href="css/styles.css" /></head><body><div id="usi_container"><div id="usi_display" role="alertdialog" aria-label="' +
-        (0, string_1.escapeHtml)(schema.headline || 'Modal') +
-        '" aria-modal="true" class="usi_display usi_shadow usi_layout_' +
-        schema.layout +
-        ' usi_pattern_' +
-        schema.pattern +
-        '">' +
-        closeHtml +
-        '<div id="usi_content"><article class="usi_modal ' + layoutClass + '"' + semanticBoxInlineStyle(ast) + '><section class="usi_modal_inner"><section class="usi_main">' +
-        eyebrowHtml +
-        headlineHtml +
-        subtextHtml +
-        primaryCtaHtml +
-        extraMainHtml +
-        extraUtilityHtml +
-        '</section>' +
-        '<aside class="usi_aside">' + productsHtml + summaryHtml + extraAsideHtml + '</aside>' +
-        '</section>' +
-        disclaimerHtml +
-        '</article></div></div></div></body></html>';
-    const componentCss = semanticNodeRule('.usi_modal', ast, {}) +
-        semanticNodeRule('.usi_eyebrow', eyebrowNode, { margin: 0 }) +
-        semanticNodeRule('.usi_headline', headlineNode, { margin: 0 }) +
-        semanticNodeRule('.usi_subtext', subtextNode, { margin: 0 }) +
-        semanticNodeRule('.usi_aside', productListNode || summaryNode || ast, {}) +
-        semanticNodeRule('.usi_summary', summaryNode, {}) +
-        semanticNodeRule('.usi_primary_cta', ctaNode || ast, Object.assign({
-            display: 'inline-flex',
-            'align-items': 'center',
-            'justify-content': 'center',
-            cursor: 'pointer',
-            border: (ctaNode || ast).style.borderColor ? String((ctaNode || ast).style.borderWidth || 1) + 'px solid ' + (ctaNode || ast).style.borderColor : undefined,
-        }, buttonStyleDeclarations(ctaNode || ast))) +
-        semanticNodeRule('.usi_disclaimer', disclaimerNode, { margin: '1rem 0 0' }) +
-        extraCss +
-        regionRule('.usi_main', ast, mainBounds) +
-        regionRule('.usi_aside', ast, rightBounds || productsBounds) +
-        productCardNodes.map(function (node, index) {
-            return semanticNodeRule('.usi_product_card:nth-child(' + (index + 1) + ')', node, {});
-        }).join('');
-    const semanticComponentCss = [
-        (schema.primaryCta || hasProducts || hasSecondaryCta || hasCoupon || hasSurvey)
-            ? '.usi_primary_cta, .usi_product_cta, .usi_secondary_cta, .usi_coupon_button, .usi_survey_option {\n\tappearance: none;\n\tpadding: 14px 20px;\n\tborder-radius: 0;\n}\n'
-            : '',
-        schema.primaryCta ? '.usi_primary_cta {\n\twidth: fit-content;\n\tmargin-top: 8px;\n}\n' : '',
-        hasProducts
-            ? '.usi_products {\n\tdisplay: grid;\n\tgap: ' + productGap + 'px;\n\talign-items: start;\n}\n.usi_products_grid {\n\tgrid-template-columns: repeat(' + gridColumns + ', minmax(0, 1fr));\n}\n.usi_products_single {\n\tgrid-template-columns: minmax(0, 1fr);\n}\n.usi_products_carousel {\n\tgrid-auto-flow: column;\n\tgrid-auto-columns: minmax(220px, 1fr);\n\toverflow-x: auto;\n\tpadding-bottom: 4px;\n}\n.usi_product_card {\n\tdisplay: flex;\n\tflex-direction: column;\n\tgap: 10px;\n\tpadding: 14px;\n\tbackground: #f3f3f3;\n\tborder-radius: 16px;\n\tmin-width: 0;\n}\n.usi_product_image {\n\tdisplay: block;\n\twidth: 100%;\n\taspect-ratio: 1 / 1;\n\tobject-fit: cover;\n\tborder-radius: 12px;\n\tbackground: #dcdcdc;\n}\n.usi_product_image_placeholder {\n\tborder: 1px dashed #dddddd;\n}\n.usi_product_body {\n\tdisplay: flex;\n\tflex-direction: column;\n\tgap: 6px;\n}\n.usi_product_title {\n\tmargin: 0;\n\tfont-size: 1rem;\n}\n.usi_product_meta, .usi_product_price {\n\tmargin: 0;\n}\n.usi_product_price {\n\tfont-weight: 700;\n}\n'
-            : '',
-        hasSummary
-            ? '.usi_summary {\n\tdisplay: flex;\n\tflex-direction: column;\n\tgap: 12px;\n\tpadding: 16px;\n\tborder: 1px solid #dddddd;\n\tborder-radius: 16px;\n\tbackground: rgba(255,255,255,0.8);\n}\n.usi_summary_title {\n\tmargin: 0;\n\tfont-size: 1rem;\n}\n.usi_summary_row {\n\tdisplay: grid;\n\tgrid-template-columns: 1fr auto;\n\tgap: 16px;\n\talign-items: start;\n}\n.usi_summary_row strong {\n\tfont-weight: 700;\n}\n'
-            : '',
-        hasEmailInput || hasPhoneInput ? '.usi_field {\n\tdisplay:flex;\n\tflex-direction:column;\n\tgap:8px;\n}\n.usi_field_input {\n\twidth:100%;\n\tpadding:14px 16px;\n\tborder:1px solid #d0d0d0;\n\tbackground:#fff;\n\tcolor:#111;\n}\n' : '',
-        hasSurvey ? '.usi_survey {\n\tdisplay:flex;\n\tflex-direction:column;\n\tgap:12px;\n}\n.usi_survey_options {\n\tdisplay:flex;\n\tflex-direction:column;\n\tgap:8px;\n}\n' : '',
-        hasCoupon ? '.usi_coupon {\n\tdisplay:flex;\n\tgap:12px;\n\talign-items:center;\n\tflex-wrap:wrap;\n}\n.usi_coupon_code {\n\tpadding:12px 16px;\n\tborder:1px solid #222;\n\tbackground:#fff;\n\tfont-weight:700;\n}\n' : '',
-        hasOptin ? '.usi_optin {\n\tdisplay:flex;\n\tgap:10px;\n\talign-items:center;\n}\n' : '',
-        hasCountdown ? '.usi_countdown {\n\tdisplay:inline-flex;\n\tpadding:10px 14px;\n\tbackground:#1f1f1f;\n\tcolor:#fff;\n\tfont-weight:700;\n}\n' : '',
-        hasProgress ? '.usi_progress {\n\twidth:100%;\n\theight:12px;\n\tbackground:#ddd;\n\tborder-radius:999px;\n\toverflow:hidden;\n}\n.usi_progress_fill {\n\twidth:55%;\n\theight:100%;\n\tbackground:#222;\n}\n' : '',
-        schema.disclaimer ? '.usi_disclaimer {\n\ttext-align: center;\n}\n' : '',
-        (0, index_1.findNodesByRole)(ast, 'divider', 0).length ? '.usi_divider {\n\tdisplay:block;\n\twidth:100%;\n\theight:4px;\n\tborder:0;\n\tbackground:#1f1f1f;\n\tborder-radius:999px;\n}\n' : '',
-        '@media (max-width: 720px) {\n\t.usi_display {\n\t\twidth: min(100vw, ' + displayWidth + 'px);\n\t\tleft: 0;\n\t\tmargin-left: 0;\n\t}\n' +
-            (hasSideRail ? '\t.usi_layout_split .usi_modal_inner {\n\t\tgrid-template-columns: 1fr;\n\t}\n' : '') +
-            (hasProducts ? '\t.usi_products_grid {\n\t\tgrid-template-columns: repeat(auto-fit, minmax(140px, 1fr));\n\t}\n' : '') +
-            '}\n',
-    ].join('');
-    const css = '* { box-sizing: border-box; } body { margin: 0; background: #ececec; color: #111111; font-family: Helvetica, Arial, sans-serif; } #usi_container { width: 100%; } .usi_display { left:50%; margin-left:-' + String(displayWidth / 2) + 'px; top:0px; width:' + displayWidth + 'px; height:' + displayHeight + 'px; position: relative; display: block; font-size: 16px; } .usi_display * { padding:0; margin:0; color:inherit; text-decoration:none; line-height:1.2; box-shadow:none; outline:none; text-align:left; font-family: Helvetica, Arial, sans-serif; float:none; } .usi_shadow { box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.33); } #usi_close { position:absolute; z-index:2000000300; cursor:pointer; border:none; background:none; display:flex; align-items:center; justify-content:center; font-size:1.5rem; line-height:1; } #usi_content { position:absolute; left:0px; top:0px; width:100%; height:100%; z-index:2000000200; } .usi_modal { width: 100%; min-height: 100%; padding: clamp(16px, 3vw, 32px); position: relative; } .usi_modal_sidebar { max-width: 360px; margin-left: auto; } .usi_modal_bottom_bar { min-height: auto; } .usi_modal_inner { display: flex; flex-direction: column; gap: clamp(16px, 2.2vw, 28px); min-height: 100%; } .usi_layout_split .usi_modal_inner { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(20px, 3vw, 40px); align-items: start; } .usi_layout_stacked .usi_modal_inner { display: flex; flex-direction: column; } .usi_main { display: flex; flex-direction: column; gap: 12px; justify-content: flex-start; align-self: start; } .usi_aside { display: flex; flex-direction: column; gap: clamp(16px, 2vw, 24px); align-self: start; } .usi_layout_stacked .usi_main { align-items: center; text-align: center; } .usi_layout_stacked .usi_primary_cta { align-self: flex-start; } .usi_sr_only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; } ' + semanticComponentCss + componentCss;
-    return { html: html, css: css };
-}
-function rawNodeTag(node) {
-    if (node.detectedRole === 'headline')
-        return 'h1';
-    if (node.detectedRole === 'eyebrow')
-        return 'p';
-    if (node.detectedRole === 'subtext' || node.detectedRole === 'disclaimer')
-        return 'p';
-    if (node.detectedRole === 'cta')
-        return 'button';
-    if (node.type === 'TEXT')
-        return 'p';
-    if (node.children.length)
-        return 'section';
-    return 'div';
-}
-function rawNodeClasses(node) {
-    const classes = ['usi_raw_node', 'usi_raw_node_' + String(node.type).toLowerCase()];
-    if (node.detectedRole && node.detectedRole !== 'other')
-        classes.push('usi_raw_node_' + node.detectedRole.replace(/-/g, '_'));
-    if (node.layout.mode !== 'NONE')
-        classes.push('usi_raw_node_autolayout');
-    return classes.join(' ');
-}
-function rawNodeStyle(node) {
-    return (0, css_1.cssDeclarations)({
-        display: node.layout.mode === 'NONE' ? (node.children.length ? 'block' : undefined) : 'flex',
-        'flex-direction': node.layout.mode === 'HORIZONTAL' ? 'row' : node.layout.mode === 'VERTICAL' ? 'column' : undefined,
-        gap: node.layout.gap ? node.layout.gap + 'px' : undefined,
-        padding: node.layout.padding.top || node.layout.padding.right || node.layout.padding.bottom || node.layout.padding.left
-            ? node.layout.padding.top + 'px ' + node.layout.padding.right + 'px ' + node.layout.padding.bottom + 'px ' + node.layout.padding.left + 'px'
-            : undefined,
-        'background-color': node.style.background,
-        color: node.style.color,
-        'border-color': node.style.borderColor,
-        'border-style': node.style.borderColor ? 'solid' : undefined,
-        'border-width': node.style.borderWidth ? node.style.borderWidth + 'px' : undefined,
-        'border-radius': node.style.borderRadius ? node.style.borderRadius + 'px' : undefined,
-        opacity: node.style.opacity,
-        'font-size': node.style.fontSize ? node.style.fontSize + 'px' : undefined,
-        'font-weight': node.style.fontWeight,
-        'line-height': node.style.lineHeight ? node.style.lineHeight + 'px' : undefined,
-        'text-align': node.style.textAlign,
-        'min-height': node.bounds.height ? Math.min(node.bounds.height, 240) + 'px' : undefined,
-    });
-}
-function renderRawTree(node) {
-    if (node.ignored || !node.visible)
-        return '';
-    const tag = rawNodeTag(node);
-    const className = rawNodeClasses(node);
-    const style = rawNodeStyle(node);
-    if (node.type === 'TEXT' || (!node.children.length && node.text)) {
-        return '<' + tag + ' class="' + className + '"' + (style ? ' style="' + (0, string_1.escapeHtml)(style) + '"' : '') + '>' + (0, string_1.escapeHtml)(node.text || (0, index_1.collectText)(node)) + '</' + tag + '>';
-    }
-    if ((node.detectedRole === 'image' || node.roleOverride === 'image') && !node.children.length) {
-        return '<div class="' + className + '"' + (style ? ' style="' + (0, string_1.escapeHtml)(style) + '"' : '') + ' aria-hidden="true"></div>';
-    }
-    return '<' + tag + ' class="' + className + '"' + (style ? ' style="' + (0, string_1.escapeHtml)(style) + '"' : '') + '>' + node.children.map(renderRawTree).join('') + '</' + tag + '>';
-}
-function renderRawFallback(ast) {
-    const html = '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Raw structured fallback</title><link rel="stylesheet" href="css/fallback.css" /></head><body><main class="usi_raw_root">' + renderRawTree(ast) + '</main></body></html>';
-    const css = '* { box-sizing: border-box; }body { margin: 0; font-family: Inter, Arial, sans-serif; background: #f4f4f4; color: #222; }.usi_raw_root { max-width: 1080px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }.usi_raw_node { width: 100%; }.usi_raw_node_cta { width: fit-content; border: 0; background: #222; color: #fff; border-radius: 999px; padding: 12px 18px; cursor: pointer; }.usi_raw_node_headline { margin: 0; }.usi_raw_node_disclaimer { font-size: 12px; color: #666; }.usi_raw_node_image { background: #ddd; min-height: 140px; border-radius: 12px; }';
-    return { html: html, css: css };
-}
-},
-"utils/css": function(require, module, exports) {
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.cssDeclarations = cssDeclarations;
-exports.toPercent = toPercent;
-exports.lineHeightCss = lineHeightCss;
-exports.getProductionScaleForFrame = getProductionScaleForFrame;
-exports.pxToEm = pxToEm;
-exports.scalePx = scalePx;
-exports.textTransformFromCase = textTransformFromCase;
-const constants_1 = require("../constants");
-function cssDeclarations(style) {
-    return Object.entries(style)
-        .filter(function (_entry) {
-        return _entry[1] != null && _entry[1] !== '';
-    })
-        .map(function (entry) {
-        return entry[0] + ': ' + entry[1] + ';';
-    })
-        .join(' ');
-}
-function toPercent(value, total) {
-    if (!total)
-        return '0%';
-    return ((value / total) * 100).toFixed(4).replace(/\.?0+$/, '') + '%';
-}
-function lineHeightCss(node) {
-    if (node.style.lineHeight)
-        return node.style.lineHeight + 'px';
-    if (node.style.fontSize)
-        return (node.style.fontSize * 1.2).toFixed(2).replace(/\.?0+$/, '') + 'px';
-    return undefined;
-}
-function getProductionScaleForFrame(bounds) {
-    return bounds.width >= constants_1.THREE_X_THRESHOLD || bounds.height >= constants_1.THREE_X_THRESHOLD
-        ? constants_1.PRODUCTION_SCALE
-        : 1;
-}
-function pxToEm(value, base = 16, scale = 1) {
-    if (typeof value !== 'number')
-        return undefined;
-    return (value / scale / base).toFixed(4).replace(/\.?0+$/, '') + 'em';
-}
-function scalePx(value, scale = 1) {
-    if (typeof value !== 'number')
-        return undefined;
-    return value / scale;
-}
-function textTransformFromCase(textCase) {
-    if (textCase === 'upper')
-        return 'uppercase';
-    if (textCase === 'lower')
-        return 'lowercase';
-    if (textCase === 'title')
-        return 'capitalize';
-    return undefined;
-}
 },
 "render/preview-pages": function(require, module, exports) {
 "use strict";
@@ -3401,7 +2408,6 @@ exports.renderMockupReviewIndex = renderMockupReviewIndex;
 const string_1 = require("../utils/string");
 function renderPreviewIndex(title, images, devMode) {
     const previews = [
-        { name: 'Semantic', href: 'semantic.html' },
         { name: 'Flattened Live Text', href: 'flattened_live_text.html' },
         { name: 'Flattened Text Baked', href: 'flattened_text_baked.html' },
     ];
@@ -3419,7 +2425,7 @@ function renderPreviewIndex(title, images, devMode) {
     const shell = (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>' +
         (0, string_1.escapeHtml)(title) +
         ' Preview</title><style>' +
-        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_surface_alt:#f8f8f8;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_link:#0b57d0;--usi_media:#f8f8f8;--usi_nav:#eef3fd;--usi_nav_active:#dce8ff;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_surface_alt:#121417;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_link:#8ab4f8;--usi_media:#0f1113;--usi_nav:#1d2633;--usi_nav_active:#27364a;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}.usi_preview_shell{display:flex;flex-direction:column;gap:24px;max-width:1400px;margin:0 auto;}.usi_preview_header,.usi_preview_panel,.usi_preview_gallery,.usi_preview_code_card{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px;}.usi_preview_header h1,.usi_preview_panel h2,.usi_preview_gallery h2,.usi_preview_code_card h2,.usi_preview_code_card h3{margin:0;}.usi_preview_header p,.usi_preview_code_card p{margin:0;color:var(--usi_muted);}.usi_preview_card_action a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid var(--usi_border);border-radius:999px;background:var(--usi_nav);color:var(--usi_link);text-decoration:none;font-weight:700;transition:background-color .15s ease,border-color .15s ease;}.usi_preview_card_action a:hover{background:var(--usi_nav_active);border-color:var(--usi_link);}.usi_preview_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;}.usi_preview_frame{height:720px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;}.usi_preview_panel iframe{width:200%;height:1440px;border:0;background:#fff;transform:scale(.5);transform-origin:0 0;display:block;}.usi_preview_gallery_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;}.usi_preview_gallery_item{margin:0;display:flex;flex-direction:column;gap:8px;}.usi_preview_gallery_item a{display:block;border:1px solid var(--usi_border);border-radius:12px;overflow:hidden;background:var(--usi_surface);}.usi_preview_gallery_item img{display:block;width:100%;height:220px;object-fit:contain;background:var(--usi_media);}.usi_preview_gallery_item figcaption{font-size:13px;color:var(--usi_muted);word-break:break-word;}.usi_preview_code_grid{display:grid;grid-template-columns:minmax(320px,420px) minmax(0,1fr);gap:20px;align-items:start;}.usi_preview_code_preview img{display:block;width:100%;height:auto;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_media);}.usi_preview_code_columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}.usi_preview_code_columns pre{margin:0;padding:16px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;white-space:pre;tab-size:2;}@media (max-width:1200px){.usi_preview_code_columns{grid-template-columns:1fr;}}@media (max-width:960px){.usi_preview_code_grid{grid-template-columns:1fr;}}</style></head><body><main class="usi_preview_shell"><section class="usi_preview_header"><h1>' +
+        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_surface_alt:#f8f8f8;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_link:#0b57d0;--usi_media:#f8f8f8;--usi_nav:#eef3fd;--usi_nav_active:#dce8ff;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_surface_alt:#121417;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_link:#8ab4f8;--usi_media:#0f1113;--usi_nav:#1d2633;--usi_nav_active:#27364a;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;white-space: pre-wrap;}.usi_preview_shell{display:flex;flex-direction:column;gap:24px;max-width:1400px;margin:0 auto;}.usi_preview_header,.usi_preview_panel,.usi_preview_gallery,.usi_preview_code_card{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px;}.usi_preview_header h1,.usi_preview_panel h2,.usi_preview_gallery h2,.usi_preview_code_card h2,.usi_preview_code_card h3{margin:0;}.usi_preview_header p,.usi_preview_code_card p{margin:0;color:var(--usi_muted);}.usi_preview_card_action a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid var(--usi_border);border-radius:999px;background:var(--usi_nav);color:var(--usi_link);text-decoration:none;font-weight:700;transition:background-color .15s ease,border-color .15s ease;}.usi_preview_card_action a:hover{background:var(--usi_nav_active);border-color:var(--usi_link);}.usi_preview_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;}.usi_preview_frame{height:720px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;}.usi_preview_panel iframe{width:100%;height:600px;border:0;background:background: repeating-conic-gradient(#808080 0 25%, #000000 0 50%) 50% / 20px 20px;transform-origin:0 0;display:block;}.usi_preview_gallery_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;}.usi_preview_gallery_item{margin:0;display:flex;flex-direction:column;gap:8px;}.usi_preview_gallery_item a{display:block;border:1px solid var(--usi_border);border-radius:12px;overflow:hidden;background:var(--usi_surface);}.usi_preview_gallery_item img{display:block;width:100%;height:220px;object-fit:contain;background:var(--usi_media);}.usi_preview_gallery_item figcaption{font-size:13px;color:var(--usi_muted);word-break:break-word;}.usi_preview_code_grid{display:grid;gap:20px;align-items:start;}.usi_preview_code_preview img{display:block;width:100%;height:auto;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_media);}.usi_preview_code_columns{width:100%;}.usi_preview_code_columns pre{margin:0;padding:16px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;white-space:pre;tab-size:2;}@media (max-width:1200px){.usi_preview_code_columns{grid-template-columns:1fr;}}@media (max-width:960px){.usi_preview_code_grid{grid-template-columns:1fr;}}</style></head><body><main class="usi_preview_shell"><section class="usi_preview_header"><h1>' +
         (0, string_1.escapeHtml)(title) +
         '</h1><p>Open the exported variants and review the generated flattened campaign code below.</p></section>' +
         galleryHtml +
@@ -3429,15 +2435,10 @@ function renderPreviewIndex(title, images, devMode) {
             return '<article class="usi_preview_panel"><div class="usi_preview_card_action"><a href="' + preview.href + '">' + (0, string_1.escapeHtml)(preview.name) + '</a></div><div class="usi_preview_frame"><iframe loading="lazy" src="' + preview.href + '" title="' + (0, string_1.escapeHtml)(preview.name) + '"></iframe></div></article>';
         })
             .join('') +
-        '</section><section class="usi_preview_code_card"><h2>Flattened Campaign Code</h2><p>The preview image below uses the text baked background, alongside the exact CSS and JS generated for the flattened campaign output.</p><div class="usi_preview_code_grid"><article class="usi_preview_code_preview"><h3>Text Baked Background</h3><img src="' +
-        (0, string_1.escapeHtml)(devMode.bakedImageHref) +
-        '" alt="' +
-        (0, string_1.escapeHtml)(title + ' baked background') +
-        '" /></article><section class="usi_preview_code_columns"><article><h3>Flattened Campaign CSS</h3><pre><code>' +
-        cssPlaceholder +
-        '</code></pre></article><article><h3>Flattened usi_js</h3><pre><code>' +
-        jsPlaceholder +
-        '</code></pre></article></section></div></section>' +
+        '</section><section class="usi_preview_code_card"><h2>Flattened Campaign Code</h2>' +
+        '<p>CSS and JS generated for the flattened campaign output.</p><div class="usi_preview_code_grid"><section class="usi_preview_code_columns"></article>' +
+        '<article><h3>Fusi_js</h3><pre><code>' + jsPlaceholder + '</code></pre></article>' +
+        '<article><h3>CSS</h3><pre><code>' + cssPlaceholder + '</code></pre></section></div></section>' +
         '</main></body></html>');
     return shell
         .replace(cssPlaceholder, (0, string_1.escapeHtml)(devMode.cssSource))
@@ -3445,7 +2446,7 @@ function renderPreviewIndex(title, images, devMode) {
 }
 function renderMultiExportIndex(entries) {
     return (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Export Index</title><style>' +
-        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_surface_alt:#f8f8f8;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_link:#0b57d0;--usi_media:#f8f8f8;--usi_nav:#eef3fd;--usi_nav_active:#dce8ff;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_surface_alt:#121417;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_link:#8ab4f8;--usi_media:#0f1113;--usi_nav:#1d2633;--usi_nav_active:#27364a;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}.usi_export_root{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}.usi_export_header,.usi_export_card{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;}.usi_export_header h1,.usi_export_header p,.usi_export_card h2{margin:0 0 12px 0;}.usi_export_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;}.usi_export_card a{color:var(--usi_link);text-decoration:none;font-weight:700;}.usi_export_open{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid var(--usi_border);border-radius:999px;background:var(--usi_nav);transition:background-color .15s ease,border-color .15s ease;}.usi_export_open:hover{background:var(--usi_nav_active);border-color:var(--usi_link);} .usi_export_card_action{margin-bottom:12px;}.usi_export_frame{height:720px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;}.usi_export_card iframe{width:200%;height:1440px;border:0;background:#fff;transform:scale(.5);transform-origin:0 0;display:block;}.usi_export_gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;}.usi_export_gallery figure{margin:0;display:flex;flex-direction:column;gap:6px;}.usi_export_gallery a{display:block;border:1px solid var(--usi_border);border-radius:10px;overflow:hidden;background:var(--usi_surface);}.usi_export_gallery img{display:block;width:100%;height:120px;object-fit:contain;background:var(--usi_media);}.usi_export_gallery figcaption{font-size:12px;color:var(--usi_muted);word-break:break-word;}</style></head><body><main class="usi_export_root"><section class="usi_export_header"><h1>Export Index</h1><p>Preview each exported frame below.</p></section><section class="usi_export_grid">' +
+        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_surface_alt:#f8f8f8;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_link:#0b57d0;--usi_media:#f8f8f8;--usi_nav:#eef3fd;--usi_nav_active:#dce8ff;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_surface_alt:#121417;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_link:#8ab4f8;--usi_media:#0f1113;--usi_nav:#1d2633;--usi_nav_active:#27364a;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}.usi_export_root{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}.usi_export_header,.usi_export_card{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;}.usi_export_header h1,.usi_export_header p,.usi_export_card h2{margin:0 0 12px 0;}.usi_export_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;}.usi_export_card a{color:var(--usi_link);text-decoration:none;font-weight:700;}.usi_export_open{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid var(--usi_border);border-radius:999px;background:var(--usi_nav);transition:background-color .15s ease,border-color .15s ease;}.usi_export_open:hover{background:var(--usi_nav_active);border-color:var(--usi_link);} .usi_export_card_action{margin-bottom:12px;}.usi_export_frame{height:720px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;}.usi_export_card iframe{width:100%;height:700px;border:0;background:#fff;transform-origin:0 0;display:block;}.usi_export_gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;}.usi_export_gallery figure{margin:0;display:flex;flex-direction:column;gap:6px;}.usi_export_gallery a{display:block;border:1px solid var(--usi_border);border-radius:10px;overflow:hidden;background:var(--usi_surface);}.usi_export_gallery img{display:block;width:100%;height:120px;object-fit:contain;background:var(--usi_media);}.usi_export_gallery figcaption{font-size:12px;color:var(--usi_muted);word-break:break-word;}</style></head><body><main class="usi_export_root"><section class="usi_export_header"><h1>Export Index</h1><p>Preview each exported frame below.</p></section><section class="usi_export_grid">' +
         entries
             .map(function (entry) {
             const galleryHtml = entry.images.length
@@ -3463,11 +2464,11 @@ function renderMultiExportIndex(entries) {
         '</section></main></body></html>');
 }
 function renderMockupReviewIndex(entries) {
-    return (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Mockup Review</title><style>' +
-        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_media:#f8f8f8;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_media:#0f1113;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}.usi_mockup_root{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}.usi_mockup_header,.usi_mockup_section{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;}.usi_mockup_header h1,.usi_mockup_header p,.usi_mockup_section h2{margin:0 0 12px 0;}.usi_mockup_gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;}.usi_mockup_card{margin:0;display:flex;flex-direction:column;gap:10px;}.usi_mockup_card a{display:block;border:1px solid var(--usi_border);border-radius:12px;overflow:hidden;background:var(--usi_surface);}.usi_mockup_card img{display:block;width:100%;height:360px;object-fit:contain;background:var(--usi_media);}.usi_mockup_card figcaption{font-size:14px;color:var(--usi_muted);word-break:break-word;}.usi_mockup_card strong{display:block;color:var(--usi_text);margin-bottom:4px;}</style></head><body><main class="usi_mockup_root"><section class="usi_mockup_header"><h1>Mockup Review</h1><p>Review all exported mockup images for client feedback.</p></section><section class="usi_mockup_section"><h2>Frames</h2><div class="usi_mockup_gallery">' +
+    return (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Mockups</title><style>' +
+        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_media:#f8f8f8;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_media:#0f1113;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}.usi_mockup_root{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}.usi_mockup_header,.usi_mockup_section{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;}.usi_mockup_header h1,.usi_mockup_header p,.usi_mockup_section h2{margin:0 0 12px 0;}.usi_mockup_gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;}.usi_mockup_card{margin:0;display:flex;flex-direction:column;gap:10px;}.usi_mockup_card a{position:relative; display: block; border: 10px solid var(--usi_muted); border-radius: 12px; overflow: hidden; background: var(--usi_surface); border-bottom: 40px solid var(--usi_muted); border-top: 40px solid var(--usi_muted); height: 600px;}.usi_mockup_card img{display:block;width:100%;object-fit:contain;position: absolute; bottom: 0;}.usi_mockup_card figcaption{font-size:14px;color:var(--usi_muted);word-break:break-word;}.usi_mockup_card strong{display:block;color:var(--usi_text);margin-bottom:4px;}</style></head><body><main class="usi_mockup_root"><section class=""><h1>Mockups</h1></section><section class="usi_mockup_section"><div class="usi_mockup_gallery">' +
         entries
             .map(function (entry) {
-            return '<figure class="usi_mockup_card"><a href="' + entry.href + '" target="_blank" rel="noreferrer"><img src="' + entry.href + '" alt="' + (0, string_1.escapeHtml)(entry.name) + '" /></a><figcaption><strong>' + (0, string_1.escapeHtml)(entry.name) + '</strong>' + (0, string_1.escapeHtml)(entry.href) + '</figcaption></figure>';
+            return '<figure class="usi_mockup_card"><a href="' + entry.href + '" target="_blank" rel="noreferrer"><img src="' + entry.href + '" alt="' + (0, string_1.escapeHtml)(entry.name) + '" /></a><figcaption><strong>' + (0, string_1.escapeHtml)(entry.name) + '</strong></figcaption></figure>'; //' + escapeHtml(entry.href) + '
         })
             .join('') +
         '</div></section></main></body></html>');
@@ -3586,17 +2587,7 @@ function componentText(node, definition) {
         return text;
     return definition && definition.render.fallbackText ? definition.render.fallbackText : '';
 }
-function shouldRenderInFlattened(definition, hideVisibleText) {
-    if (!definition)
-        return false;
-    return hideVisibleText ? definition.render.flattened.textBaked : definition.render.flattened.liveText;
-}
-function shouldRenderAsFlattenedHtml(definition, hideVisibleText) {
-    if (!definition)
-        return false;
-    return definition.role !== 'disclaimer' && shouldRenderInFlattened(definition, hideVisibleText);
-}
-function renderExplicitComponentNode(node) {
+function renderExplicitComponentNode(node, hideVisibleText) {
     const definition = componentDefinitionForNode(node);
     if (!definition)
         return '';
@@ -3604,8 +2595,12 @@ function renderExplicitComponentNode(node) {
     const className = definition.render.className;
     const text = componentText(node, definition);
     const kind = definition.render.kind;
+    if (kind === 'container') {
+        return '<' + tag + ' class="' + className + '"></' + tag + '>';
+    }
     if (kind === 'input') {
-        return '<label class="' + className + '"><span class="usi_field_label">' + (0, string_1.escapeHtml)(node.name || definition.label) + '</span><input class="usi_field_input" type="' + (0, string_1.escapeHtml)(definition.render.inputType || 'text') + '" placeholder="' + (0, string_1.escapeHtml)(text) + '" /></label>';
+        const placeholder = hideVisibleText ? '' : (0, string_1.escapeHtml)(text);
+        return '<label class="' + className + '"><span class="usi_field_label">' + (0, string_1.escapeHtml)(node.name || definition.label) + '</span><input class="usi_field_input" type="' + (0, string_1.escapeHtml)(definition.render.inputType || 'text') + '" placeholder="' + placeholder + '" /></label>';
     }
     if (kind === 'survey') {
         const children = node.children.filter(function (child) { return !child.ignored && child.visible; });
@@ -3646,11 +2641,12 @@ function renderExtraRegionNodes(root, region, excludedIds, hideVisibleText) {
         if (node.ignored || excludedIds.indexOf(node.id) !== -1)
             return;
         const definition = componentDefinitionForNode(node);
+        if (definition && definition.id === 'content_stack')
+            return;
         const shouldRenderNode = !!definition &&
-            definition.render.region === region &&
-            (hideVisibleText == null || shouldRenderAsFlattenedHtml(definition, hideVisibleText));
+            definition.render.region === region;
         if (shouldRenderNode) {
-            rendered.push(renderExplicitComponentNode(node));
+            rendered.push(renderExplicitComponentNode(node, hideVisibleText || false));
             return;
         }
         for (let index = 0; index < node.children.length; index += 1) {
@@ -3674,6 +2670,23 @@ function combineBounds(nodes) {
         bottom = Math.max(bottom, filtered[index].bounds.y + filtered[index].bounds.height);
     }
     return { x: left, y: top, width: right - left, height: bottom - top };
+}
+function nodeContains(parent, child) {
+    for (let index = 0; index < parent.children.length; index += 1) {
+        const current = parent.children[index];
+        if (current === child)
+            return true;
+        if (nodeContains(current, child))
+            return true;
+    }
+    return false;
+}
+function topLevelNodes(nodes, root) {
+    return nodes.filter(function (node) {
+        return !nodes.some(function (other) {
+            return other !== node && nodeContains(other, node);
+        });
+    });
 }
 function flattenedTextDeclarations(node, frameScale, extra) {
     if (!node)
@@ -3741,7 +2754,7 @@ function buildSyntheticBounds(nodes) {
     return { x: left, y: top, width: right - left, height: bottom - top };
 }
 function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
-    const frameScale = (0, css_1.getProductionScaleForFrame)(root.bounds);
+    const frameScale = 1;
     const scaledRootWidth = (0, css_1.scalePx)(root.bounds.width, frameScale) || root.bounds.width;
     const scaledRootHeight = (0, css_1.scalePx)(root.bounds.height, frameScale) || root.bounds.height;
     const headlineNode = (0, index_1.findNormalizedNodeById)(root, analysis.headlineNodeId);
@@ -3797,17 +2810,13 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     })();
     const subtextText = analysis.schema.subtext || (subtextNode ? (0, index_1.collectText)(subtextNode) : '');
     const ctaLabel = analysis.schema.primaryCta && analysis.schema.primaryCta.label ? analysis.schema.primaryCta.label : ctaNode ? (0, index_1.collectText)(ctaNode) : 'Redeem Now';
-    const eyebrowDefinition = eyebrowNode ? componentDefinitionForNode(eyebrowNode) : constants_1.COMPONENT_BY_ROLE.eyebrow;
-    const headlineDefinition = headlineNode ? componentDefinitionForNode(headlineNode) : constants_1.COMPONENT_BY_ROLE.headline;
-    const subtextDefinition = subtextNode ? componentDefinitionForNode(subtextNode) : constants_1.COMPONENT_BY_ROLE.subtext;
-    const showEyebrowInVariant = hideVisibleText ? false : shouldRenderAsFlattenedHtml(eyebrowDefinition, hideVisibleText);
-    const showHeadlineInVariant = hideVisibleText ? false : shouldRenderAsFlattenedHtml(headlineDefinition, hideVisibleText);
-    const showSubtextInVariant = hideVisibleText ? false : shouldRenderAsFlattenedHtml(subtextDefinition, hideVisibleText);
+    const showEyebrowInVariant = hideVisibleText ? false : !!eyebrowText;
+    const showHeadlineInVariant = hideVisibleText ? false : !!headlineText;
+    const showSubtextInVariant = hideVisibleText ? false : !!subtextText;
     const eyebrowClass = showEyebrowInVariant ? 'usi_eyebrow' : 'usi_eyebrow usi_sr_only';
     const headlineClass = showHeadlineInVariant ? 'usi_headline' : 'usi_headline usi_sr_only';
     const subtextClass = showSubtextInVariant ? 'usi_subtext' : 'usi_subtext usi_sr_only';
-    const ctaDefinition = ctaNode ? componentDefinitionForNode(ctaNode) : constants_1.COMPONENT_BY_ROLE.cta;
-    const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta) && shouldRenderInFlattened(ctaDefinition, hideVisibleText);
+    const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta);
     const ctaInnerHtml = showCtaInVariant ? (0, string_1.escapeHtml)(ctaLabel) : '';
     const summaryTitle = resolveSummaryTitle(summaryNode);
     const hasProducts = !!analysis.schema.products.length && !!productCardNodes.length && !!productBounds;
@@ -3816,11 +2825,12 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const hasPhoneInput = hasInsertedComponent(root, 'phone_input');
     const hasSurvey = hasInsertedComponent(root, 'survey_block');
     const hasCoupon = hasInsertedComponent(root, 'copy_coupon');
-    const hasOptin = hasInsertedComponent(root, 'optin_component') && shouldRenderInFlattened(constants_1.COMPONENT_BY_ID.optin_component, hideVisibleText);
+    const hasOptin = hasInsertedComponent(root, 'optin_component');
     const hasCountdown = hasInsertedComponent(root, 'countdown_timer');
     const hasProgress = hasInsertedComponent(root, 'progress_bar');
     const hasMediaPanel = hasInsertedComponent(root, 'media_panel');
     const hasSecondaryCta = hasInsertedComponent(root, 'no_thanks_button');
+    const hasDisclaimer = hasInsertedComponent(root, 'disclaimer_text');
     const productGap = productCardNodes.length > 1 && productBounds
         ? productCardNodes.slice(1).reduce(function (sum, card, index) {
             const previous = productCardNodes[index];
@@ -3860,10 +2870,38 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const flattenedExtraMainHtml = renderExtraRegionNodes(root, 'main', flattenedExcludedIds, hideVisibleText);
     const flattenedExtraAsideHtml = renderExtraRegionNodes(root, 'aside', flattenedExcludedIds, hideVisibleText);
     const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, 'utility', flattenedExcludedIds, hideVisibleText);
-    const previewContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + (0, string_1.escapeHtml)(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + (0, string_1.escapeHtml)(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + (0, string_1.escapeHtml)(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + (0, string_1.escapeHtml)(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + previewProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + previewSummaryHtml;
-    const runtimeContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + (0, string_1.escapeHtml)(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + (0, string_1.escapeHtml)(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + (0, string_1.escapeHtml)(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + (0, string_1.escapeHtml)(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + runtimeProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + runtimeSummaryHtml;
-    const formattedPreviewContentHtml = (0, string_1.formatHtml)(previewContentHtml).trim();
-    const formattedRuntimeContentHtml = (0, string_1.formatHtml)(runtimeContentHtml).trim();
+    // Explicitly render missing components to ensure they appear in flattened HTML
+    const progressBarNodes = (0, index_1.findNodesByRole)(root, 'progress', 0.35);
+    const surveyNodes = topLevelNodes((0, index_1.findNodesByRole)(root, 'survey', 0.35), root);
+    const emailInputNodes = (0, index_1.findNodesByRole)(root, 'email-input', 0.35);
+    const phoneInputNodes = (0, index_1.findNodesByRole)(root, 'phone-input', 0.35);
+    const copyCouponNodes = (0, index_1.findNodesByRole)(root, 'copy-coupon', 0.35);
+    const noThanksNodes = (0, index_1.findNodesByRole)(root, 'secondary-cta', 0.35);
+    const mediaPanelNodes = (0, index_1.findNodesByRole)(root, 'image', 0.35);
+    const disclaimerNodes = (0, index_1.findNodesByRole)(root, 'disclaimer', 0.35);
+    const allExtraComponentNodes = [
+        ...progressBarNodes,
+        ...surveyNodes,
+        ...emailInputNodes,
+        ...phoneInputNodes,
+        ...copyCouponNodes,
+        ...noThanksNodes,
+        ...mediaPanelNodes,
+        ...disclaimerNodes,
+    ];
+    const extraComponentsHtml = allExtraComponentNodes.map(node => renderExplicitComponentNode(node, hideVisibleText)).join('');
+    // Generate positioning CSS for extra components
+    const extraComponentsCss = allExtraComponentNodes.map(function (node) {
+        const definition = componentDefinitionForNode(node);
+        if (!definition)
+            return '';
+        const className = definition.render.className;
+        return '.' + className + ' {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width) + ';\n  top: ' + (0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height) + ';\n  width: ' + (0, css_1.toPercent)(node.bounds.width, root.bounds.width) + ';\n  ' + flattenedBoxDeclarations(node, frameScale) + '\n}\n';
+    }).join('');
+    const previewContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + (0, string_1.escapeHtml)(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + (0, string_1.escapeHtml)(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + (0, string_1.escapeHtml)(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + (0, string_1.escapeHtml)(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + extraComponentsHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + previewProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + previewSummaryHtml;
+    const runtimeContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + (0, string_1.escapeHtml)(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + (0, string_1.escapeHtml)(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + (0, string_1.escapeHtml)(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + (0, string_1.escapeHtml)(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + extraComponentsHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + runtimeProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + runtimeSummaryHtml;
+    //const formattedPreviewContentHtml = previewContentHtml;
+    const formattedRuntimeContentHtml = runtimeContentHtml;
     const html = '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Legacy flattened export</title><link rel="stylesheet" href="css/' + (hideVisibleText ? 'flattened_text_baked.css' : 'flattened_live_text.css') + '" /></head><body><div id="usi_container"><div id="usi_display" role="alertdialog" aria-label="' + (0, string_1.escapeHtml)(headlineText || 'Preview') + '" aria-modal="true" class="usi_display usi_show_css usi_shadow" style="width:' + scaledRootWidth + 'px;height:' + scaledRootHeight + 'px;"><div id="usi_content">' + previewContentHtml + '</div><div id="usi_background"><img src="' + (0, string_1.escapeHtml)(imageFileName) + '" aria-hidden="true" alt="' + (0, string_1.escapeHtml)(headlineText || 'Preview') + '" id="usi_background_img" style="width:100%;height:100%;" /></div></div></div></body></html>';
     const productCardCss = productCardNodes.map(function (card, index) {
         const imageNode = (0, index_1.findNormalizedNodeById)(card, (0, index_1.findImageNodeId)(card));
@@ -3871,8 +2909,7 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         return '.usi_product' + (index + 1) + ' {\n  width: 100%;\n  max-width: 100%;\n  min-width: 0;\n}\n' + imageRule;
     }).join('');
     const componentCss = [
-        hasEmailInput ? '.usi_field {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
-        hasPhoneInput ? '' : '',
+        (hasEmailInput || hasPhoneInput) ? '.usi_field {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
         hasSurvey ? '.usi_survey {\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n}\n.usi_survey_options {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_survey_option {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
         hasCoupon ? '.usi_coupon {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.75em;\n  align-items: center;\n}\n.usi_coupon_code {\n  padding: 0.75em 1em;\n  border: 1px solid #222;\n  background: #fff;\n  font-weight: 700;\n}\n.usi_coupon_button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
         hasOptin ? '.usi_optin {\n  display: flex;\n  gap: 0.625em;\n  align-items: center;\n}\n.usi_optin_input {\n  appearance: none;\n  -webkit-appearance: none;\n  width: 1.125em;\n  height: 1.125em;\n  border: 1px solid currentColor;\n  background: #fff;\n  flex: 0 0 auto;\n}\n.usi_optin_label {\n  display: inline-block;\n}\n' : '',
@@ -3880,11 +2917,12 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         hasProgress ? '.usi_progress {\n  width: 100%;\n  height: 0.75em;\n  background: #ddd;\n  border-radius: 999px;\n  overflow: hidden;\n}\n.usi_progress_fill {\n  width: 55%;\n  height: 100%;\n  background: #222;\n}\n' : '',
         hasMediaPanel ? '.usi_media_panel {\n  width: 100%;\n  min-height: 8em;\n  background: #d9d9d9;\n}\n' : '',
         hasSecondaryCta ? '.usi_secondary_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
+        hasDisclaimer ? '.usi_disclaimer {\n  margin: 0;\n  font-size: 0.875em;\n  color: #666;\n  line-height: 1.4;\n}\n' : '',
     ].join('');
     const textRegionCss = [
-        headlineText && headlineNode && mainBounds ? '.usi_headline {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(headlineNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(headlineNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(headlineNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(headlineNode, frameScale, { 'white-space': 'pre-wrap' }) + ';\n}\n' : '',
-        eyebrowText && eyebrowNode && mainBounds ? '.usi_eyebrow {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(eyebrowNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(eyebrowNode, frameScale, { 'white-space': 'pre-wrap' }) + ';\n}\n' : '',
-        subtextText && subtextNode && mainBounds ? '.usi_subtext {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(subtextNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(subtextNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(subtextNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(subtextNode, frameScale, { 'white-space': 'pre-wrap' }) + ';\n}\n' : '',
+        headlineText && headlineNode && mainBounds ? '.usi_headline {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(headlineNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(headlineNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(headlineNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(headlineNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
+        eyebrowText && eyebrowNode && mainBounds ? '.usi_eyebrow {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(eyebrowNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(eyebrowNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
+        subtextText && subtextNode && mainBounds ? '.usi_subtext {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(subtextNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(subtextNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(subtextNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(subtextNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
     ].join('');
     const css = '* { box-sizing: border-box; }\nhtml { font-size: 16px; }\nbody { margin: 0; background: #efefef; font-family: Inter, Arial, sans-serif; }\n' +
         '.usi_display { left:50%; margin-left:-' + String(scaledRootWidth / 2) + 'px; top:0px; width:' + scaledRootWidth + 'px; height:' + scaledRootHeight + 'px; }\n' +
@@ -3895,19 +2933,30 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         'button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { cursor:pointer; }\n' +
         '.usi_main {\n  position: absolute;\n  left: ' + (hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.x - root.bounds.x, root.bounds.width) : '0%') : '0%') + ';\n  top: ' + (hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.y - root.bounds.y, root.bounds.height) : '0%') : '0%') + ';\n  width: ' + (hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.width, root.bounds.width) : '100%') : '100%') + ';\n  height: ' + (!hasProducts && !hasSummary ? '100%' : (mainBounds ? (0, css_1.toPercent)(mainBounds.height, root.bounds.height) : '100%')) + ';\n}\n' +
         textRegionCss +
-        (hasProducts ? '.usi_products {\n  position: absolute;\n  left: ' + (productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : '100%') + ';\n  min-height: ' + (productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : '0%') + ';\n  display: grid;\n  grid-template-columns: repeat(' + ((productBounds && productBounds.width < productBounds.height * 0.9) ? 1 : gridColumns) + ', minmax(0, 1fr));\n  gap: ' + (productBounds && productGap ? (0, css_1.toPercent)(productGap, productBounds.width) : '2%') + ';\n  align-items: start;\n}\n.usi_product {\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  padding: 0.9em;\n  min-width: 0;\n  ' + (flattenedBoxDeclarations(firstProductCard, frameScale, { width: '100%', 'max-width': '100%', 'min-width': '0' }) || 'width: 100%; max-width: 100%;') + ';\n}\n.usi_product_image {\n  position: relative;\n  display: block;\n  width: 100%;\n  overflow: hidden;\n  ' + (flattenedBoxDeclarations(productImageNode, frameScale, { width: '100%' }) || 'width: 100%;') + ';\n}\n.usi_product_image img {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n.usi_product_body {\n  display: flex;\n  flex-direction: column;\n  gap: 0.35em;\n  min-width: 0;\n}\n.usi_product_title {\n  margin: 0;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(productTitleNode, frameScale, { 'white-space': 'pre-wrap', 'background-color': 'transparent', border: 'none' }) || 'font-weight: 700;') + ';\n}\n.usi_product_price {\n  margin: 0;\n  ' + (flattenedTextDeclarations(productPriceNode, frameScale) || '') + ';\n}\n.usi_product_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  ' + (flattenedBoxDeclarations(productButtonNode, frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center', color: '#ffffff' }) || 'border: 1px solid currentColor; background: transparent; color:#ffffff;') + ';\n}\n' + productCardCss : '') +
-        (hasSummary ? '.usi_summary {\n  position: absolute;\n  left: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : '59%') + ';\n  width: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : '76%') + ';\n  padding: 1em;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (flattenedBoxDeclarations(summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_summary_title {\n  margin: 0 0 0.5em;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(summaryNode, frameScale, { 'font-size': '1em', 'font-weight': 700, 'white-space': 'pre-wrap' }) || 'font-weight: 700; font-size: 1em;') + ';\n}\n.usi_summary_row {\n  display: grid;\n  grid-template-columns: 1fr auto;\n  gap: 1em;\n  align-items: start;\n  font-size: 1em;\n}\n.usi_price {\n  ' + (flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_discount {\n  ' + (flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_new_price {\n  ' + (flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + ';\n}\n.usi_label, .usi_value {\n  font-size: 1em;\n}\n.usi_new_price .usi_value, .usi_discount .usi_value, .usi_new_price strong, .usi_discount strong {\n  font-weight: 700;\n}\n' : '') +
+        (hasProducts ? '.usi_products {\n  position: absolute;\n  left: ' + (productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : '100%') + ';\n  min-height: ' + (productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : '0%') + ';\n  display: grid;\n  grid-template-columns: repeat(' + ((productBounds && productBounds.width < productBounds.height * 0.9) ? 1 : gridColumns) + ', minmax(0, 1fr));\n  gap: ' + (productBounds && productGap ? (0, css_1.toPercent)(productGap, productBounds.width) : '2%') + ';\n  align-items: start;\n}\n.usi_product {\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  padding: 0.9em;\n  min-width: 0;\n  ' + (flattenedBoxDeclarations(firstProductCard, frameScale, { width: '100%', 'max-width': '100%', 'min-width': '0' }) || 'width: 100%; max-width: 100%;') + '\n}\n.usi_product_image {\n  position: relative;\n  display: block;\n  width: 100%;\n  overflow: hidden;\n  ' + (flattenedBoxDeclarations(productImageNode, frameScale, { width: '100%' }) || 'width: 100%;') + '\n}\n.usi_product_image img {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n.usi_product_body {\n  display: flex;\n  flex-direction: column;\n  gap: 0.35em;\n  min-width: 0;\n}\n.usi_product_title {\n  margin: 0;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(productTitleNode, frameScale, { 'white-space': 'pre-wrap', 'background-color': 'transparent', border: 'none' }) || 'font-weight: 700;') + '\n}\n.usi_product_price {\n  margin: 0;\n  ' + (flattenedTextDeclarations(productPriceNode, frameScale) || '') + '\n}\n.usi_product_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  ' + (flattenedBoxDeclarations(productButtonNode, frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center', color: '#ffffff' }) || 'border: 1px solid currentColor; background: transparent; color:#ffffff;') + '\n}\n' + productCardCss : '') +
+        (hasSummary ? '.usi_summary {\n  position: absolute;\n  left: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : '59%') + ';\n  width: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : '76%') + ';\n  padding: 1em;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (flattenedBoxDeclarations(summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_summary_title {\n  margin: 0 0 0.5em;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(summaryNode, frameScale, { 'font-size': '1em', 'font-weight': 700, 'white-space': 'pre-wrap' }) || 'font-weight: 700; font-size: 1em;') + '\n}\n.usi_summary_row {\n  display: grid;\n  grid-template-columns: 1fr auto;\n  gap: 1em;\n  align-items: start;\n  font-size: 1em;\n}\n.usi_price {\n  ' + (flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_discount {\n  ' + (flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_new_price {\n  ' + (flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_label, .usi_value {\n  font-size: 1em;\n}\n.usi_new_price .usi_value, .usi_discount .usi_value, .usi_new_price strong, .usi_discount strong {\n  font-weight: 700;\n}\n' : '') +
         componentCss +
+        extraComponentsCss +
         '.usi_submitbutton {\n  position: absolute;\n  left: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.y - root.bounds.y, root.bounds.height) : '77%') + ';\n  width: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.width, root.bounds.width) : '76%') + ';\n  min-height: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.height, root.bounds.height) : '15.5%') + ';\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n' + (flattenedBoxDeclarations(ctaNode, frameScale, { display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'background-color': ctaNode && ctaNode.style.background ? ctaNode.style.background : '#1f1f1f', color: ctaNode && ctaNode.style.color ? ctaNode.style.color : '#ffffff', 'text-align': ctaNode && ctaNode.style.textAlign ? ctaNode.style.textAlign : 'center' })) + '}\n.usi_sr_only {\n  position: absolute !important;\n  width: 1px !important;\n  height: 1px !important;\n  padding: 0 !important;\n  margin: -1px !important;\n  overflow: hidden !important;\n  clip: rect(0, 0, 0, 0) !important;\n  white-space: nowrap !important;\n  border: 0 !important;\n}\n';
-    const js = buildPriceRuntimeSetup(hasSummary) + 'usi_js.click_cta = () => {\n  try {\n    usi_js.deep_link();\n  } catch (err) {\n    usi_commons.report_error(err);\n  }\n};\n\nusi_js.display_vars.p1_html = `\n' + (0, string_1.escapeTemplateString)(formattedRuntimeContentHtml) + '\n`;\n';
+    const js = buildPriceRuntimeSetup(hasSummary) + 'usi_js.click_cta = () => {\n  try {\n    usi_js.deep_link();\n  } catch (err) {\n    usi_commons.report_error(err);\n  }\n};\n\nusi_js.display_vars.p1_html = `\n' + (0, string_1.escapeTemplateString)(formatFlattenedHtml(formattedRuntimeContentHtml)) + '\n`;\n';
     return {
-        html: (0, string_1.formatHtml)(html),
-        css: (0, string_1.formatCss)(css),
+        html: html,
+        css: css,
         imageFileName: imageFileName,
         js: js,
-        contentHtml: formattedPreviewContentHtml,
-        runtimeContentHtml: formattedRuntimeContentHtml,
+        contentHtml: previewContentHtml,
+        runtimeContentHtml: runtimeContentHtml,
     };
+}
+function formatFlattenedHtml(html) {
+    if (!html)
+        return '';
+    return (0, string_1.formatHtml)(html)
+        .split('\n')
+        .map(function (line) {
+        return line ? '\t' + line : line;
+    })
+        .join('\n');
 }
 function buildUsiJsFile(pages) {
     const needsPriceRuntime = pages.some(function (page) {
@@ -3915,10 +2964,8 @@ function buildUsiJsFile(pages) {
     });
     const assignments = pages
         .map(function (page) {
-        return ('usi_js.display_vars.' +
-            page.key +
-            '_html = `\n' +
-            (0, string_1.escapeTemplateString)(page.variant.runtimeContentHtml || page.variant.contentHtml) +
+        return ('usi_js.display_vars.' + page.key + '_html = `\n' +
+            (0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.runtimeContentHtml || page.variant.contentHtml)) +
             '\n`;\n');
     })
         .join('\n');
@@ -3931,6 +2978,57 @@ function buildUsiJsFile(pages) {
         '  }\n' +
         '};\n\n' +
         assignments);
+}
+},
+"utils/css": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.cssDeclarations = cssDeclarations;
+exports.toPercent = toPercent;
+exports.lineHeightCss = lineHeightCss;
+exports.pxToEm = pxToEm;
+exports.scalePx = scalePx;
+exports.textTransformFromCase = textTransformFromCase;
+function cssDeclarations(style) {
+    return Object.entries(style)
+        .filter(function (_entry) {
+        return _entry[1] != null && _entry[1] !== '';
+    })
+        .map(function (entry) {
+        return entry[0] + ': ' + entry[1] + ';';
+    })
+        .join(' ');
+}
+function toPercent(value, total) {
+    if (!total)
+        return '0%';
+    return ((value / total) * 100).toFixed(4).replace(/\.?0+$/, '') + '%';
+}
+function lineHeightCss(node) {
+    if (node.style.lineHeight)
+        return node.style.lineHeight + 'px';
+    if (node.style.fontSize)
+        return (node.style.fontSize * 1.2).toFixed(2).replace(/\.?0+$/, '') + 'px';
+    return undefined;
+}
+function pxToEm(value, base = 16, scale = 1) {
+    if (typeof value !== 'number')
+        return undefined;
+    return (value / scale / base).toFixed(4).replace(/\.?0+$/, '') + 'em';
+}
+function scalePx(value, scale = 1) {
+    if (typeof value !== 'number')
+        return undefined;
+    return value / scale;
+}
+function textTransformFromCase(textCase) {
+    if (textCase === 'upper')
+        return 'uppercase';
+    if (textCase === 'lower')
+        return 'lowercase';
+    if (textCase === 'title')
+        return 'capitalize';
+    return undefined;
 }
 }
 };

@@ -342,7 +342,7 @@ export async function buildAssetComponentNode(componentId: string): Promise<Scen
         componentId === 'sidebar_shell' ? 'Sidebar Shell' :
         componentId === 'bottom_bar_shell' ? 'Bottom Bar Shell' :
         'Modal Shell';
-      if (componentId === 'sidebar_shell') frame.resize(320, 660);
+      if (componentId === 'sidebar_shell') frame.resize(320, 800);
       else if (componentId === 'bottom_bar_shell') frame.resize(1280, 180);
       else frame.resize(640, 660);
       frame.fills = [makeSolidFill('#FFFFFF')];
@@ -562,7 +562,8 @@ export async function buildAssetComponentNode(componentId: string): Promise<Scen
   return node;
 }
 
-function findAssetLibraryPage(): PageNode | undefined {
+async function findAssetLibraryPage(): Promise<PageNode | undefined> {
+  await figma.loadAllPagesAsync();
   for (let index = 0; index < figma.root.children.length; index += 1) {
     const child = figma.root.children[index];
     if (isPageNode(child) && child.name === ASSET_LIBRARY_PAGE_NAME) return child;
@@ -570,9 +571,10 @@ function findAssetLibraryPage(): PageNode | undefined {
   return undefined;
 }
 
-function findAssetSourceComponentNode(componentId: string): SceneNode | undefined {
-  const page = findAssetLibraryPage();
+async function findAssetSourceComponentNode(componentId: string): Promise<SceneNode | undefined> {
+  const page = await findAssetLibraryPage();
   if (!page) return undefined;
+  await page.loadAsync();
   const stack: BaseNode[] = page.children.slice();
   while (stack.length) {
     const current = stack.shift();
@@ -591,7 +593,7 @@ function findAssetSourceComponentNode(componentId: string): SceneNode | undefine
 }
 
 export async function createAssetComponentInstance(componentId: string): Promise<SceneNode> {
-  const sourceNode = findAssetSourceComponentNode(componentId);
+  const sourceNode = await findAssetSourceComponentNode(componentId);
   const node = sourceNode ? ((sourceNode as any).clone() as SceneNode) : await buildAssetComponentNode(componentId);
 
   const selection = figma.currentPage.selection;

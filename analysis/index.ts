@@ -310,10 +310,11 @@ function resolvePattern(root: NormalizedNode, productCount: number, hasSummary: 
   return productCount > 1 ? 'carousel' : 'single';
 }
 
-function collectWarnings(schema: PromoExport): string[] {
+function collectWarnings(): string[] {
+  //schema: PromoExport
   const warnings: string[] = [];
-  if (!schema.headline) warnings.push('No headline component found.');
-  if (!schema.primaryCta) warnings.push('No primary CTA component found.');
+  // if (!schema.headline) warnings.push('No headline component found.');
+  // if (!schema.primaryCta) warnings.push('No primary CTA component found.');
   return warnings;
 }
 
@@ -377,7 +378,7 @@ export function analyzeSelection(rootNode: AnyNode): AnalysisResult {
     schema: schema,
     report: {
       pattern: schema.pattern,
-      warnings: collectWarnings(schema),
+      warnings: collectWarnings(),//schema
     },
     roleMap: roleMap,
     dynamicNodeIds: collectDynamicNodeIds(ast),

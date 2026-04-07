@@ -36,6 +36,7 @@ export function formatHtml(source: string): string {
       return line.trim();
     })
     .filter(Boolean);
+
   const voidTags: Record<string, boolean> = {
     area: true,
     base: true,
@@ -52,6 +53,7 @@ export function formatHtml(source: string): string {
     track: true,
     wbr: true,
   };
+
   const out: string[] = [];
   let depth = 0;
 
@@ -81,6 +83,7 @@ export function formatCss(source: string): string {
     .replace(/\}\s*/g, '\n}\n')
     .replace(/\n{2,}/g, '\n')
     .trim();
+
   const lines = input.split('\n');
   const out: string[] = [];
   let depth = 0;
@@ -100,39 +103,89 @@ export function formatJs(source: string): string {
   const lines = String(source || '')
     .replace(/\r\n/g, '\n')
     .split('\n');
+
   const out: string[] = [];
   let depth = 0;
-  let templateDepth = 0;
+  let inTemplate = false;
+  let templateBuffer: string[] = [];
+
+  function flushTemplateBuffer(): void {
+    if (!templateBuffer.length) return;
+
+    while (templateBuffer.length && !templateBuffer[0].trim()) {
+      templateBuffer.shift();
+    }
+    while (templateBuffer.length && !templateBuffer[templateBuffer.length - 1].trim()) {
+      templateBuffer.pop();
+    }
+
+    let minIndent: number | null = null;
+
+    for (let index = 0; index < templateBuffer.length; index += 1) {
+      const line = templateBuffer[index];
+      if (!line.trim()) continue;
+
+      const match = line.match(/^[\t ]*/);
+      const indentText = match ? match[0] : '';
+
+      if (minIndent === null || indentText.length < minIndent) {
+        minIndent = indentText.length;
+      }
+    }
+
+    const stripCount = minIndent || 0;
+
+    for (let index = 0; index < templateBuffer.length; index += 1) {
+      const line = templateBuffer[index];
+      out.push(stripCount > 0 ? line.slice(stripCount) : line);
+    }
+
+    templateBuffer = [];
+  }
 
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = lines[index].replace(/\s+$/g, '');
     const trimmed = rawLine.trim();
+
+    if (inTemplate) {
+      if (trimmed === '`' || trimmed === '`;') {
+        flushTemplateBuffer();
+        out.push(new Array(depth + 1).join('\t') + trimmed);
+        inTemplate = false;
+        continue;
+      }
+
+      templateBuffer.push(rawLine);
+      continue;
+    }
+
     if (!trimmed) {
       if (out.length && out[out.length - 1] !== '') out.push('');
       continue;
     }
 
-    const isTemplateContent = templateDepth > 0 && trimmed !== '`;' && trimmed !== '`';
-    if (!isTemplateContent && (/^[}\])]/.test(trimmed) || /^}\s*catch\b/.test(trimmed) || /^}\s*else\b/.test(trimmed))) {
+    if (/^[}\])]/.test(trimmed) || /^}\s*catch\b/.test(trimmed) || /^}\s*else\b/.test(trimmed)) {
       depth = Math.max(0, depth - 1);
     }
 
-    const indent = isTemplateContent ? depth + 1 : depth;
-    out.push(new Array(indent + 1).join('\t') + trimmed);
+    out.push(new Array(depth + 1).join('\t') + trimmed);
 
     const backtickCount = (trimmed.match(/`/g) || []).length;
-    if (backtickCount % 2 === 1) {
-      templateDepth = templateDepth ? 0 : 1;
+    const opensTemplate = backtickCount % 2 === 1 && /`\s*$/.test(trimmed);
+
+    if (opensTemplate) {
+      inTemplate = true;
+      continue;
     }
 
-    if (!templateDepth) {
-      const openCount = (trimmed.match(/\{/g) || []).length;
-      const closeCount = (trimmed.match(/\}/g) || []).length;
-      if (openCount > closeCount && !/^}/.test(trimmed)) {
-        depth += openCount - closeCount;
-      }
+    const openCount = (trimmed.match(/\{/g) || []).length;
+    const closeCount = (trimmed.match(/\}/g) || []).length;
+    if (openCount > closeCount && !/^}/.test(trimmed)) {
+      depth += openCount - closeCount;
     }
   }
+
+  flushTemplateBuffer();
 
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }

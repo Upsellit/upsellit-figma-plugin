@@ -1,5 +1,4 @@
-import { PRODUCTION_SCALE, THREE_X_THRESHOLD } from '../constants';
-import { NodeBounds, NormalizedNode } from '../types';
+import { NormalizedNode } from '../types';
 
 export function cssDeclarations(style: Record<string, string | number | undefined>): string {
   return Object.entries(style)
@@ -21,12 +20,6 @@ export function lineHeightCss(node: NormalizedNode): string | undefined {
   if (node.style.lineHeight) return node.style.lineHeight + 'px';
   if (node.style.fontSize) return (node.style.fontSize * 1.2).toFixed(2).replace(/\.?0+$/, '') + 'px';
   return undefined;
-}
-
-export function getProductionScaleForFrame(bounds: NodeBounds): number {
-  return bounds.width >= THREE_X_THRESHOLD || bounds.height >= THREE_X_THRESHOLD
-    ? PRODUCTION_SCALE
-    : 1;
 }
 
 export function pxToEm(value?: number, base = 16, scale = 1): string | undefined {

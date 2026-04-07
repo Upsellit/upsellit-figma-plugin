@@ -28,7 +28,6 @@ A Figma plugin for building Upsellit modal campaigns from reusable asset compone
 Each campaign folder includes:
 
 - `index.html`
-- `semantic.html`
 - `flattened_live_text.html`
 - `flattened_text_baked.html`
 - `css/semantic.css`
@@ -54,14 +53,12 @@ If multiple frames are exported, the root also includes:
 
 - `index.html`
 - `mockup_review.html`
-- `library_manifest.json`
 
 ### Component rules
 
 - Use the provided asset components for any exportable content.
 - Build each campaign inside frames.
 - Keep reusable styling on `Upsellit Asset Source`.
-- Use `Upsellit Templates` as a reference page generated from `library_manifest.json`.
 
 ## Developer
 
@@ -117,13 +114,6 @@ npm run lint
   - Final export assembly
   - ZIP/package structure
 
-- `scripts/generate-template-library.mjs`
-  - Converts `library_manifest.json` into generated runtime data
-- `generated/template-library.ts`
-  - Generated file consumed by the plugin
-- `library_manifest.json`
-  - Source input for template-library generation
-
 ### Output model
 
 The plugin is component-driven. It does not depend on generic layer heuristics anymore.
@@ -157,27 +147,3 @@ Rule of thumb:
 - Define what the component is in `constants.ts`
 - Define how it is inserted in `figma/builders.ts`
 - Define custom export behavior only when the shared render metadata is not enough
-
-### Template library updates
-
-To refresh template-library data:
-
-1. Export the latest template set from the plugin.
-2. Replace `library_manifest.json` in the repo root.
-3. Run:
-
-```bash
-npm run build
-```
-
-That regenerates `generated/template-library.ts`.
-
-### Generated files
-
-Do not edit:
-
-- `generated/template-library.ts`
-
-Safe to replace:
-
-- `library_manifest.json`

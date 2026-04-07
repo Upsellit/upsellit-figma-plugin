@@ -4,8 +4,6 @@ import { COMMON_COMPONENTS } from './constants';
 import { AnyNode } from './types';
 import {
   createAssetComponentInstance,
-  ensureAssetSourcePage,
-  ensureTemplatesPageFromLibrary,
   getExportRoots,
 } from './figma/index';
 import { buildSemanticExport } from './packaging/index';
@@ -38,28 +36,6 @@ figma.ui.onmessage = async function (msg: AnyNode) {
       figma.ui.postMessage({
         type: 'error',
         message: error && error.message ? String(error.message) : 'Failed to add asset component.',
-      });
-    }
-    return;
-  }
-
-  if (msg.type === 'create-asset-source-page') {
-    try {
-      const assetPage = await ensureAssetSourcePage();
-      const templatesPage = await ensureTemplatesPageFromLibrary();
-      figma.ui.postMessage({
-        type: 'asset-source-page-ready',
-        message:
-          'Opened ' +
-          String(assetPage.name || 'asset source page') +
-          ' and ' +
-          String(templatesPage.name || 'templates page') +
-          '.',
-      });
-    } catch (error: any) {
-      figma.ui.postMessage({
-        type: 'error',
-        message: error && error.message ? String(error.message) : 'Failed to create asset source page.',
       });
     }
     return;

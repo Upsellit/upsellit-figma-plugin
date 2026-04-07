@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { COMPONENT_BY_ID, COMPONENT_BY_ROLE } from '../constants';
-import { analyzeSelection, flattenTree, uniqueIds } from '../analysis/index';
+import { analyzeSelection, uniqueIds } from '../analysis/index';
 import { ExportFile, NormalizedNode } from '../types';
 import {
   attachProductAssets,
@@ -20,66 +19,10 @@ import {
   renderMultiExportIndex,
   renderMockupReviewIndex,
   renderPreviewIndex,
-  renderSemanticHtml,
+  //renderSemanticHtml,
 } from '../render/index';
 import { formatFileText } from '../utils/string';
 
-function formatCompactJson(value: unknown): string {
-  return JSON.stringify(value);
-}
-
-function buildLibraryManifestEntry(entry: {
-  frameName: string;
-  folder: string;
-  schema: any;
-  ast: NormalizedNode;
-  assetTheme: any[];
-  assets: {
-    mockup?: string;
-    flattenedLive?: string;
-    flattenedTextBaked?: string;
-    productAssets: string[];
-    previewPages?: string[];
-    cssFiles?: string[];
-    jsFiles?: string[];
-  };
-}): {
-  frameName: string;
-  folder: string;
-  schema: any;
-  ast: NormalizedNode;
-  assets: {
-    mockup?: string;
-    flattenedLive?: string;
-    flattenedTextBaked?: string;
-    productAssets: string[];
-    previewPages?: string[];
-    cssFiles?: string[];
-    jsFiles?: string[];
-  };
-} {
-  return {
-    frameName: entry.frameName,
-    folder: entry.folder,
-    schema: entry.schema,
-    ast: entry.ast,
-    assets: entry.assets,
-  };
-}
-
-function collectFlattenedHiddenAssetNodeIds(root: NormalizedNode, hideVisibleText: boolean): string[] {
-  return flattenTree(root)
-    .filter(function (node) {
-      const definition = node.componentOverride && COMPONENT_BY_ID[node.componentOverride]
-        ? COMPONENT_BY_ID[node.componentOverride]
-        : COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || 'other'];
-      if (!definition) return false;
-      return hideVisibleText ? definition.render.flattened.textBaked === false : definition.render.flattened.liveText === false;
-    })
-    .map(function (node) {
-      return node.id;
-    });
-}
 
 async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promise<{
   files: ExportFile[];
@@ -114,24 +57,21 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
   const assetTheme = await getAssetThemeSnapshot();
   const mockupAsset = await exportMockupPng(rootNode, exportBaseName + '_mockup_1x.png');
   const assets = await attachProductAssets(analysis.schema.products, nodeIndex, exportBaseName);
-  const semantic = renderSemanticHtml(analysis.schema, analysis.ast);
+  //const semantic = renderSemanticHtml(analysis.schema, analysis.ast);
   const flattenedTextAssetName = exportBaseName + '.png';
   const flattenedLiveAssetName = exportBaseName + '.png';
   const flattenedTextAsset = await exportFlattenedBackgroundVariant(
     rootNode,
-    uniqueIds(analysis.dynamicNodeIds.concat(collectFlattenedHiddenAssetNodeIds(analysis.ast, true))),
-    analysis.disclaimerNodeId ? [analysis.disclaimerNodeId] : [],
+    uniqueIds(analysis.dynamicNodeIds),
+    [],
     false,
     flattenedTextAssetName,
     uniqueIds
   );
-  const flattenedLiveAlwaysHidden: string[] = [];
-  if (analysis.disclaimerNodeId) flattenedLiveAlwaysHidden.push(analysis.disclaimerNodeId);
-  if (analysis.summaryNodeId) flattenedLiveAlwaysHidden.push(analysis.summaryNodeId);
   const flattenedLiveAsset = await exportFlattenedBackgroundVariant(
     rootNode,
-    uniqueIds(analysis.dynamicNodeIds.concat(collectFlattenedHiddenAssetNodeIds(analysis.ast, false))),
-    flattenedLiveAlwaysHidden,
+    uniqueIds(analysis.dynamicNodeIds),
+    [],
     true,
     flattenedLiveAssetName,
     uniqueIds
@@ -159,15 +99,18 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
   const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
   const formattedDevCss = formatFileText('devmode.css', extractCampaignCss(flattenedTextVariant.css));
   const formattedDevJs = formatFileText('devmode.js', flattenedTextVariant.js);
+  // console.log(formattedDevCss);
+  // console.log(formattedDevJs);
   const previewHtml = renderPreviewIndex(
     previewTitle,
     images,
     {
       bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
       cssSource: formattedDevCss,
-      jsSource: formattedDevJs,
+      jsSource: formattedDevJs
     }
   );
+  console.log(previewHtml);
   const prefixed = function (name: string): string {
     return filePrefix ? filePrefix + '/' + name : name;
   };
@@ -190,9 +133,6 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
 
   const files: ExportFile[] = [
     { name: prefixed('index.html'), text: previewHtml },
-    { name: prefixed('css/styles.css'), text: semantic.css },
-    { name: prefixed('semantic.html'), text: semantic.html },
-    { name: prefixed('css/semantic.css'), text: semantic.css },
     { name: prefixed('flattened_text_baked.html'), text: flattenedTextVariant.html },
     { name: prefixed('css/flattened_text_baked.css'), text: flattenedTextVariant.css },
     { name: prefixed('js/flattened_text_baked.js'), text: flattenedTextVariant.js },
@@ -207,12 +147,18 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
 
   const formattedFiles: ExportFile[] = files.map(function (file) {
     if (!('text' in file)) return file;
+    // Skip formatting for CSS and JS files to prevent output corruption
+    const isCssOrJs = file.name.endsWith('.css') || file.name.endsWith('.js');
+    if (isCssOrJs) {
+      return file;
+    }
     return {
       name: file.name,
-      text: formatFileText(file.name, file.text),
+      text: file.text//formatFileText(file.name, file.text),
     };
   });
 
+  console.log(formattedFiles);
   return {
     files: formattedFiles,
     report: analysis.report,
@@ -229,8 +175,8 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
         flattenedLive: flattenedLiveAsset ? liveTextRootFolder + '/' + flattenedLiveAsset.name : undefined,
         flattenedTextBaked: flattenedTextAsset ? textBakedRootFolder + '/' + flattenedTextAsset.name : undefined,
         productAssets: assets.map(function (asset) { return asset.name; }),
-        previewPages: ['index.html', 'semantic.html', 'flattened_live_text.html', 'flattened_text_baked.html'],
-        cssFiles: ['css/styles.css', 'css/semantic.css', 'css/flattened_live_text.css', 'css/flattened_text_baked.css'],
+        previewPages: ['index.html', 'flattened_live_text.html', 'flattened_text_baked.html'],
+        cssFiles: ['css/styles.css', 'css/flattened_live_text.css', 'css/flattened_text_baked.css'],
         jsFiles: ['js/usi_js.js', 'js/flattened_text_baked.js'],
       },
     },
@@ -273,13 +219,6 @@ export async function buildSemanticExport(rootNodes: any | any[]): Promise<{
               },
             ])
           ),
-        },
-        {
-          name: 'library_manifest.json',
-          text: formatCompactJson({
-            assetTheme: single.importManifest.assetTheme,
-            entries: [buildLibraryManifestEntry(single.importManifest)],
-          }),
         },
         ...single.files,
       ],
@@ -327,13 +266,6 @@ export async function buildSemanticExport(rootNodes: any | any[]): Promise<{
   allFiles.unshift({
     name: 'index.html',
     text: formatFileText('index.html', renderMultiExportIndex(exportEntries)),
-  });
-  allFiles.unshift({
-    name: 'library_manifest.json',
-    text: formatCompactJson({
-      assetTheme: sharedAssetTheme,
-      entries: importEntries.map(buildLibraryManifestEntry),
-    }),
   });
   if (mockupEntries.length) {
     allFiles.unshift({

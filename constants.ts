@@ -1,8 +1,6 @@
 import { CommonComponentDefinition, ComponentTemplateId, ExportRole } from './types';
 
 export const MOBILE_WIDTH_THRESHOLD = 560;
-export const PRODUCTION_SCALE = 3;
-export const THREE_X_THRESHOLD = 1200;
 
 function component(
   id: ComponentTemplateId,
