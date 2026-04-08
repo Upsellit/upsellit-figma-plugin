@@ -1,5 +1,6 @@
 export * from './theme';
 export * from './builders';
+export * from './analyze';
 export {
   attachProductAssets,
   buildExportBaseName,

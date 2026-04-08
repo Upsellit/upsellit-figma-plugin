@@ -347,6 +347,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.walkScenePaths = exports.validateSelection = exports.setPluginMeta = exports.paintToCss = exports.hasImageFill = exports.getYearMonth = exports.getSizingMode = exports.getPluginMeta = exports.getPaddingValue = exports.getNodeChildren = exports.getExportRoots = exports.getExportPageNodes = exports.getBounds = exports.firstVisiblePaint = exports.extractTextStyle = exports.extractNodeText = exports.extractNodeStyle = exports.exportNodeImage = exports.exportMockupPng = exports.exportFlattenedBackgroundVariant = exports.buildPathMaps = exports.buildNodeIndex = exports.buildExportPackageName = exports.buildExportBaseName = exports.attachProductAssets = void 0;
 __exportStar(require("./theme"), exports);
 __exportStar(require("./builders"), exports);
+__exportStar(require("./analyze"), exports);
 var export_1 = require("./export");
 Object.defineProperty(exports, "attachProductAssets", { enumerable: true, get: function () { return export_1.attachProductAssets; } });
 Object.defineProperty(exports, "buildExportBaseName", { enumerable: true, get: function () { return export_1.buildExportBaseName; } });
@@ -1169,6 +1170,313 @@ function applyComponentMeta(node, componentId) {
     });
 }
 },
+"figma/analyze": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.normalizeRole = normalizeRole;
+exports.normalizeComponent = normalizeComponent;
+exports.normalizeNode = normalizeNode;
+exports.analyzeSelection = analyzeSelection;
+const constants_1 = require("../constants");
+const constants_2 = require("../constants");
+const export_1 = require("./export");
+const tree_1 = require("../utils/tree");
+function normalizeRole(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized)
+        return undefined;
+    const roleMap = {
+        'modal-root': 'modal-root',
+        content: 'content',
+        headline: 'headline',
+        subtext: 'subtext',
+        eyebrow: 'eyebrow',
+        divider: 'divider',
+        cta: 'cta',
+        'secondary-cta': 'secondary-cta',
+        'product-card': 'product-card',
+        'product-list': 'product-list',
+        'product-image': 'product-image',
+        'product-title': 'product-title',
+        'product-subtitle': 'product-subtitle',
+        'product-price': 'product-price',
+        'product-cta': 'product-cta',
+        summary: 'summary',
+        'summary-subtotal': 'summary-subtotal',
+        'summary-discount': 'summary-discount',
+        'summary-total': 'summary-total',
+        'email-input': 'email-input',
+        'phone-input': 'phone-input',
+        survey: 'survey',
+        'copy-coupon': 'copy-coupon',
+        optin: 'optin',
+        countdown: 'countdown',
+        progress: 'progress',
+        disclaimer: 'disclaimer',
+        'close-button': 'close-button',
+        image: 'image',
+        background: 'background',
+        ignore: 'ignore',
+        other: 'other',
+    };
+    return roleMap[normalized];
+}
+function normalizeComponent(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/-/g, '_');
+    return normalized ? normalized : undefined;
+}
+function normalizeNode(node) {
+    const meta = (0, export_1.getPluginMeta)(node);
+    const ignored = /^(1|true|yes)$/i.test(meta.exportIgnore || '');
+    const componentOverride = normalizeComponent(meta.exportComponent);
+    const roleOverride = normalizeRole(meta.exportRole) || (componentOverride ? constants_2.COMPONENT_ROLE_MAP[componentOverride] : undefined);
+    const children = (0, export_1.getNodeChildren)(node)
+        .filter(function (child) {
+        return child && child.visible !== false;
+    })
+        .map(function (child) {
+        return normalizeNode(child);
+    });
+    return {
+        id: String(node.id),
+        name: String(node.name || ''),
+        type: String(node.type || 'UNKNOWN'),
+        visible: node && node.visible !== false,
+        ignored: ignored || roleOverride === 'ignore',
+        roleOverride: roleOverride,
+        componentOverride: componentOverride,
+        collection: meta.exportCollection || undefined,
+        text: (0, export_1.extractNodeText)(node),
+        bounds: (0, export_1.getBounds)(node),
+        layout: {
+            mode: node.layoutMode || 'NONE',
+            wrap: !!node.layoutWrap && node.layoutWrap !== 'NO_WRAP',
+            gap: typeof node.itemSpacing === 'number' ? node.itemSpacing : 0,
+            padding: {
+                top: (0, export_1.getPaddingValue)(node, 'paddingTop'),
+                right: (0, export_1.getPaddingValue)(node, 'paddingRight'),
+                bottom: (0, export_1.getPaddingValue)(node, 'paddingBottom'),
+                left: (0, export_1.getPaddingValue)(node, 'paddingLeft'),
+            },
+            primaryAlign: String(node.primaryAxisAlignItems || 'MIN'),
+            counterAlign: String(node.counterAxisAlignItems || 'MIN'),
+            widthMode: (0, export_1.getSizingMode)(node, 'horizontal'),
+            heightMode: (0, export_1.getSizingMode)(node, 'vertical'),
+        },
+        style: (0, export_1.extractNodeStyle)(node),
+        children: children,
+        detectedRole: roleOverride || 'other',
+        roleConfidence: roleOverride ? 1 : 0,
+        metadata: meta,
+    };
+}
+function firstNodeText(root, role) {
+    const node = (0, tree_1.findNodesByRole)(root, role, 0)[0];
+    return node ? (0, tree_1.collectText)(node) || node.text : undefined;
+}
+function findProductListContainer(root) {
+    const explicitCollection = (0, tree_1.flattenTree)(root).find(function (node) {
+        return !node.ignored && String(node.collection || '').toLowerCase() === 'products';
+    });
+    if (explicitCollection)
+        return explicitCollection;
+    return (0, tree_1.findNodesByRole)(root, 'product-list', 0)[0];
+}
+function findProductCards(root, container) {
+    if (container) {
+        return (0, tree_1.sortByPosition)((0, tree_1.flattenTree)(container).filter(function (node) {
+            return !node.ignored && node.detectedRole === 'product-card';
+        }));
+    }
+    return (0, tree_1.findNodesByRole)(root, 'product-card', 0);
+}
+function collectDynamicNodeIds(root) {
+    return (0, tree_1.uniqueIds)((0, tree_1.flattenTree)(root)
+        .filter(function (node) {
+        return [
+            'product-card',
+            'product-list',
+            'product-image',
+            'product-title',
+            'product-subtitle',
+            'product-price',
+            'product-cta',
+            'summary',
+            'summary-subtotal',
+            'summary-discount',
+            'summary-total',
+            'email-input',
+            'phone-input',
+            'copy-coupon',
+            'countdown',
+            'progress',
+        ].includes(node.detectedRole || 'other');
+    })
+        .map(function (node) {
+        return node.id;
+    }));
+}
+function parseSummaryText(node) {
+    const rows = [];
+    const rowNodes = (0, tree_1.sortByPosition)((0, tree_1.flattenTree)(node).filter(function (child) {
+        return (child.detectedRole === 'summary-subtotal' ||
+            child.detectedRole === 'summary-discount' ||
+            child.detectedRole === 'summary-total');
+    }));
+    for (let index = 0; index < rowNodes.length; index += 1) {
+        const rowNode = rowNodes[index];
+        const role = rowNode.detectedRole;
+        const text = (0, tree_1.collectText)(rowNode);
+        const valueMatch = text.match(/-?\$[\d,.Xx]+/);
+        if (role === 'summary-subtotal')
+            rows.push({ label: 'subtotal', value: valueMatch ? valueMatch[0] : text });
+        if (role === 'summary-discount')
+            rows.push({ label: 'discount', value: valueMatch ? valueMatch[0] : text });
+        if (role === 'summary-total')
+            rows.push({ label: 'total', value: valueMatch ? valueMatch[0] : text });
+    }
+    if (!rows.length) {
+        const text = (0, tree_1.collectText)(node);
+        if (/subtotal/i.test(text))
+            rows.push({ label: 'subtotal', value: (text.match(/subtotal[^$-]*(-?\$[\d,.Xx]+)/i) || [])[1] });
+        if (/discount/i.test(text))
+            rows.push({ label: 'discount', value: (text.match(/discount[^$-]*(-?\$[\d,.Xx]+)/i) || [])[1] });
+        if (/total/i.test(text))
+            rows.push({ label: 'total', value: (text.match(/total[^$-]*(-?\$[\d,.Xx]+)/i) || [])[1] });
+    }
+    if (!rows.length)
+        return undefined;
+    const summary = { rows: rows };
+    for (let index = 0; index < rows.length; index += 1) {
+        if (rows[index].label === 'subtotal')
+            summary.subtotal = rows[index].value;
+        if (rows[index].label === 'discount')
+            summary.discount = rows[index].value;
+        if (rows[index].label === 'total')
+            summary.total = rows[index].value;
+    }
+    return summary;
+}
+function findSummaryNode(root) {
+    return (0, tree_1.findNodesByRole)(root, 'summary', 0)[0];
+}
+function buildSummary(root) {
+    const summaryNode = findSummaryNode(root);
+    return summaryNode ? parseSummaryText(summaryNode) : undefined;
+}
+function findPrimaryCtaNode(root, productContainer) {
+    return (0, tree_1.findNodesByRole)(root, 'cta', 0).find(function (node) {
+        if (!productContainer)
+            return true;
+        return !(0, tree_1.flattenTree)(productContainer).some(function (child) {
+            return child.id === node.id;
+        });
+    });
+}
+function buildPrimaryCta(root, productContainer) {
+    const node = findPrimaryCtaNode(root, productContainer);
+    if (!node)
+        return undefined;
+    return {
+        label: (0, tree_1.collectText)(node) || node.text || 'Continue',
+    };
+}
+function findDisclaimerText(root) {
+    return firstNodeText(root, 'disclaimer');
+}
+function findDisclaimerNode(root) {
+    return (0, tree_1.findNodesByRole)(root, 'disclaimer', 0)[0];
+}
+function resolvePattern(root, productCount, hasSummary) {
+    const hasWideProducts = !!(0, tree_1.findNodesByRole)(root, 'product-list', 0)[0];
+    if (hasSummary && productCount > 0)
+        return 'cart_recovery_split';
+    if (productCount > 1 && hasWideProducts)
+        return 'grid';
+    return productCount > 1 ? 'carousel' : 'single';
+}
+function collectWarnings() {
+    const warnings = [];
+    return warnings;
+}
+function buildProduct(card) {
+    const descendants = (0, tree_1.flattenTree)(card);
+    const titleNode = descendants.find(function (node) {
+        return node.detectedRole === 'product-title';
+    });
+    const subtitleNode = descendants.find(function (node) {
+        return node.detectedRole === 'product-subtitle';
+    });
+    const priceNode = descendants.find(function (node) {
+        return node.detectedRole === 'product-price';
+    });
+    const ctaNode = descendants.find(function (node) {
+        return node.detectedRole === 'product-cta';
+    });
+    return {
+        title: titleNode ? (0, tree_1.collectText)(titleNode) : undefined,
+        subtitle: subtitleNode ? (0, tree_1.collectText)(subtitleNode) : undefined,
+        price: priceNode ? (0, tree_1.collectText)(priceNode) : undefined,
+        cta: ctaNode ? (0, tree_1.collectText)(ctaNode) : undefined,
+        imageAlt: titleNode ? (0, tree_1.collectText)(titleNode) : 'Product image',
+        _imageNodeId: (0, tree_1.findImageNodeId)(card),
+    };
+}
+function analyzeSelection(rootNode) {
+    const ast = normalizeNode(rootNode);
+    const roleMap = {};
+    const nodes = (0, tree_1.flattenTree)(ast);
+    for (let index = 0; index < nodes.length; index += 1) {
+        const node = nodes[index];
+        roleMap[node.id] = {
+            role: node.detectedRole || 'other',
+            confidence: node.detectedRole && node.detectedRole !== 'other' ? 1 : 0,
+        };
+    }
+    const productContainer = findProductListContainer(ast);
+    const productCards = findProductCards(ast, productContainer);
+    const summaryNode = findSummaryNode(ast);
+    const primaryCtaNode = findPrimaryCtaNode(ast, productContainer);
+    const disclaimerNode = findDisclaimerNode(ast);
+    const headlineNode = (0, tree_1.findNodesByRole)(ast, 'headline', 0)[0];
+    const subtextNode = (0, tree_1.findNodesByRole)(ast, 'subtext', 0)[0];
+    const eyebrowNode = (0, tree_1.findNodesByRole)(ast, 'eyebrow', 0)[0];
+    const products = productCards.map(buildProduct);
+    const summary = buildSummary(ast);
+    const schema = {
+        pattern: resolvePattern(ast, products.length, !!summary),
+        layout: ast.bounds.width < constants_1.MOBILE_WIDTH_THRESHOLD ? 'mobile' : 'desktop',
+        headline: headlineNode ? (0, tree_1.collectText)(headlineNode) : undefined,
+        subtext: subtextNode ? (0, tree_1.collectText)(subtextNode) : undefined,
+        eyebrow: eyebrowNode ? (0, tree_1.collectText)(eyebrowNode) : undefined,
+        closeButton: !!(0, tree_1.findNodesByRole)(ast, 'close-button', 0)[0],
+        products: products,
+        summary: summary,
+        primaryCta: buildPrimaryCta(ast, productContainer),
+        disclaimer: findDisclaimerText(ast),
+    };
+    return {
+        ast: ast,
+        schema: schema,
+        report: {
+            pattern: schema.pattern,
+            warnings: collectWarnings(),
+        },
+        roleMap: roleMap,
+        dynamicNodeIds: collectDynamicNodeIds(ast),
+        headlineNodeId: headlineNode ? headlineNode.id : undefined,
+        subtextNodeId: subtextNode ? subtextNode.id : undefined,
+        eyebrowNodeId: eyebrowNode ? eyebrowNode.id : undefined,
+        summaryNodeId: summaryNode ? summaryNode.id : undefined,
+        productContainerNodeId: productContainer ? productContainer.id : undefined,
+        productCardNodeIds: productCards.map(function (card) {
+            return card.id;
+        }),
+        primaryCtaNodeId: primaryCtaNode ? primaryCtaNode.id : undefined,
+        disclaimerNodeId: disclaimerNode ? disclaimerNode.id : undefined,
+    };
+}
+},
 "figma/export": function(require, module, exports) {
 "use strict";
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1201,7 +1509,8 @@ const shared_1 = require("./shared");
 Object.defineProperty(exports, "getNodeChildren", { enumerable: true, get: function () { return shared_1.getNodeChildren; } });
 Object.defineProperty(exports, "getPluginMeta", { enumerable: true, get: function () { return shared_1.getPluginMeta; } });
 Object.defineProperty(exports, "setPluginMeta", { enumerable: true, get: function () { return shared_1.setPluginMeta; } });
-const index_1 = require("../analysis/index");
+const tree_1 = require("../utils/tree");
+const analyze_1 = require("./analyze");
 function getYearMonth() {
     const now = new Date();
     const yy = String(now.getFullYear()).slice(-2);
@@ -1443,8 +1752,8 @@ async function exportFlattenedBackgroundVariant(rootNode, dynamicNodeIds, always
     const pathMaps = buildPathMaps(rootNode);
     const disclaimerIds = new Set();
     const inputIds = new Set();
-    const normalizedRoot = (0, index_1.normalizeNode)(rootNode);
-    (0, index_1.flattenTree)(normalizedRoot).forEach(function (node) {
+    const normalizedRoot = (0, analyze_1.normalizeNode)(rootNode);
+    (0, tree_1.flattenTree)(normalizedRoot).forEach(function (node) {
         if (node.componentOverride === 'disclaimer_text') {
             disclaimerIds.add(node.id);
         }
@@ -1783,12 +2092,9 @@ function formatFileText(name, text) {
     return text.trim();
 }
 },
-"analysis/index": function(require, module, exports) {
+"utils/tree": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.normalizeRole = normalizeRole;
-exports.normalizeComponent = normalizeComponent;
-exports.normalizeNode = normalizeNode;
 exports.flattenTree = flattenTree;
 exports.collectText = collectText;
 exports.sortByPosition = sortByPosition;
@@ -1797,99 +2103,6 @@ exports.findNodesByRole = findNodesByRole;
 exports.findNormalizedNodeById = findNormalizedNodeById;
 exports.findImageNodeId = findImageNodeId;
 exports.uniqueIds = uniqueIds;
-exports.analyzeSelection = analyzeSelection;
-const constants_1 = require("../constants");
-const constants_2 = require("../constants");
-const index_1 = require("../figma/index");
-function normalizeRole(value) {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized)
-        return undefined;
-    const roleMap = {
-        'modal-root': 'modal-root',
-        content: 'content',
-        headline: 'headline',
-        subtext: 'subtext',
-        eyebrow: 'eyebrow',
-        divider: 'divider',
-        cta: 'cta',
-        'secondary-cta': 'secondary-cta',
-        'product-card': 'product-card',
-        'product-list': 'product-list',
-        'product-image': 'product-image',
-        'product-title': 'product-title',
-        'product-subtitle': 'product-subtitle',
-        'product-price': 'product-price',
-        'product-cta': 'product-cta',
-        summary: 'summary',
-        'summary-subtotal': 'summary-subtotal',
-        'summary-discount': 'summary-discount',
-        'summary-total': 'summary-total',
-        'email-input': 'email-input',
-        'phone-input': 'phone-input',
-        survey: 'survey',
-        'copy-coupon': 'copy-coupon',
-        optin: 'optin',
-        countdown: 'countdown',
-        progress: 'progress',
-        disclaimer: 'disclaimer',
-        'close-button': 'close-button',
-        image: 'image',
-        background: 'background',
-        ignore: 'ignore',
-        other: 'other',
-    };
-    return roleMap[normalized];
-}
-function normalizeComponent(value) {
-    const normalized = String(value || '').trim().toLowerCase().replace(/-/g, '_');
-    return normalized ? normalized : undefined;
-}
-function normalizeNode(node) {
-    const meta = (0, index_1.getPluginMeta)(node);
-    const ignored = /^(1|true|yes)$/i.test(meta.exportIgnore || '');
-    const componentOverride = normalizeComponent(meta.exportComponent);
-    const roleOverride = normalizeRole(meta.exportRole) || (componentOverride ? constants_2.COMPONENT_ROLE_MAP[componentOverride] : undefined);
-    const children = (0, index_1.getNodeChildren)(node)
-        .filter(function (child) {
-        return child && child.visible !== false;
-    })
-        .map(function (child) {
-        return normalizeNode(child);
-    });
-    return {
-        id: String(node.id),
-        name: String(node.name || ''),
-        type: String(node.type || 'UNKNOWN'),
-        visible: node && node.visible !== false,
-        ignored: ignored || roleOverride === 'ignore',
-        roleOverride: roleOverride,
-        componentOverride: componentOverride,
-        collection: meta.exportCollection || undefined,
-        text: (0, index_1.extractNodeText)(node),
-        bounds: (0, index_1.getBounds)(node),
-        layout: {
-            mode: node.layoutMode || 'NONE',
-            wrap: !!node.layoutWrap && node.layoutWrap !== 'NO_WRAP',
-            gap: typeof node.itemSpacing === 'number' ? node.itemSpacing : 0,
-            padding: {
-                top: (0, index_1.getPaddingValue)(node, 'paddingTop'),
-                right: (0, index_1.getPaddingValue)(node, 'paddingRight'),
-                bottom: (0, index_1.getPaddingValue)(node, 'paddingBottom'),
-                left: (0, index_1.getPaddingValue)(node, 'paddingLeft'),
-            },
-            primaryAlign: String(node.primaryAxisAlignItems || 'MIN'),
-            counterAlign: String(node.counterAxisAlignItems || 'MIN'),
-            widthMode: (0, index_1.getSizingMode)(node, 'horizontal'),
-            heightMode: (0, index_1.getSizingMode)(node, 'vertical'),
-        },
-        style: (0, index_1.extractNodeStyle)(node),
-        children: children,
-        detectedRole: roleOverride || 'other',
-        roleConfidence: roleOverride ? 1 : 0,
-        metadata: meta,
-    };
-}
 function flattenTree(root) {
     const out = [];
     (function walk(node) {
@@ -1935,26 +2148,6 @@ function findNormalizedNodeById(root, id) {
         return node.id === id;
     });
 }
-function firstNodeText(root, role) {
-    const node = findNodesByRole(root, role, 0)[0];
-    return node ? collectText(node) || node.text : undefined;
-}
-function findProductListContainer(root) {
-    const explicitCollection = flattenTree(root).find(function (node) {
-        return !node.ignored && String(node.collection || '').toLowerCase() === 'products';
-    });
-    if (explicitCollection)
-        return explicitCollection;
-    return findNodesByRole(root, 'product-list', 0)[0];
-}
-function findProductCards(root, container) {
-    if (container) {
-        return sortByPosition(flattenTree(container).filter(function (node) {
-            return !node.ignored && node.detectedRole === 'product-card';
-        }));
-    }
-    return findNodesByRole(root, 'product-card', 0);
-}
 function findImageNodeId(card) {
     const imageNode = flattenTree(card).find(function (node) {
         return node.detectedRole === 'product-image' || node.detectedRole === 'image';
@@ -1964,224 +2157,46 @@ function findImageNodeId(card) {
 function uniqueIds(ids) {
     return Array.from(new Set(ids.filter(Boolean)));
 }
-function collectDynamicNodeIds(root) {
-    return uniqueIds(flattenTree(root)
-        .filter(function (node) {
-        return [
-            'product-card',
-            'product-list',
-            'product-image',
-            'product-title',
-            'product-subtitle',
-            'product-price',
-            'product-cta',
-            'summary',
-            'summary-subtotal',
-            'summary-discount',
-            'summary-total',
-            'email-input',
-            'phone-input',
-            'copy-coupon',
-            'countdown',
-            'progress',
-        ].includes(node.detectedRole || 'other');
-    })
-        .map(function (node) {
-        return node.id;
-    }));
-}
-function parseSummaryText(node) {
-    const rows = [];
-    const rowNodes = sortByPosition(flattenTree(node).filter(function (child) {
-        return (child.detectedRole === 'summary-subtotal' ||
-            child.detectedRole === 'summary-discount' ||
-            child.detectedRole === 'summary-total');
-    }));
-    for (let index = 0; index < rowNodes.length; index += 1) {
-        const rowNode = rowNodes[index];
-        const role = rowNode.detectedRole;
-        const text = collectText(rowNode);
-        const valueMatch = text.match(/-?\$[\d,.Xx]+/);
-        if (role === 'summary-subtotal')
-            rows.push({ label: 'subtotal', value: valueMatch ? valueMatch[0] : text });
-        if (role === 'summary-discount')
-            rows.push({ label: 'discount', value: valueMatch ? valueMatch[0] : text });
-        if (role === 'summary-total')
-            rows.push({ label: 'total', value: valueMatch ? valueMatch[0] : text });
-    }
-    if (!rows.length) {
-        const text = collectText(node);
-        if (/subtotal/i.test(text))
-            rows.push({ label: 'subtotal', value: (text.match(/subtotal[^$-]*(-?\$[\d,.Xx]+)/i) || [])[1] });
-        if (/discount/i.test(text))
-            rows.push({ label: 'discount', value: (text.match(/discount[^$-]*(-?\$[\d,.Xx]+)/i) || [])[1] });
-        if (/total/i.test(text))
-            rows.push({ label: 'total', value: (text.match(/total[^$-]*(-?\$[\d,.Xx]+)/i) || [])[1] });
-    }
-    if (!rows.length)
-        return undefined;
-    const summary = { rows: rows };
-    for (let index = 0; index < rows.length; index += 1) {
-        if (rows[index].label === 'subtotal')
-            summary.subtotal = rows[index].value;
-        if (rows[index].label === 'discount')
-            summary.discount = rows[index].value;
-        if (rows[index].label === 'total')
-            summary.total = rows[index].value;
-    }
-    return summary;
-}
-function findSummaryNode(root) {
-    return findNodesByRole(root, 'summary', 0)[0];
-}
-function buildSummary(root) {
-    const summaryNode = findSummaryNode(root);
-    return summaryNode ? parseSummaryText(summaryNode) : undefined;
-}
-function findPrimaryCtaNode(root, productContainer) {
-    return findNodesByRole(root, 'cta', 0).find(function (node) {
-        if (!productContainer)
-            return true;
-        return !flattenTree(productContainer).some(function (child) {
-            return child.id === node.id;
-        });
-    });
-}
-function buildPrimaryCta(root, productContainer) {
-    const node = findPrimaryCtaNode(root, productContainer);
-    if (!node)
-        return undefined;
-    return {
-        label: collectText(node) || node.text || 'Continue',
-    };
-}
-function findDisclaimerText(root) {
-    return firstNodeText(root, 'disclaimer');
-}
-function findDisclaimerNode(root) {
-    return findNodesByRole(root, 'disclaimer', 0)[0];
-}
-function resolvePattern(root, productCount, hasSummary) {
-    const hasWideProducts = !!findNodesByRole(root, 'product-list', 0)[0];
-    if (hasSummary && productCount > 0)
-        return 'cart_recovery_split';
-    if (productCount > 1 && hasWideProducts)
-        return 'grid';
-    return productCount > 1 ? 'carousel' : 'single';
-}
-function collectWarnings() {
-    //schema: PromoExport
-    const warnings = [];
-    // if (!schema.headline) warnings.push('No headline component found.');
-    // if (!schema.primaryCta) warnings.push('No primary CTA component found.');
-    return warnings;
-}
-function buildProduct(card) {
-    const descendants = flattenTree(card);
-    const titleNode = descendants.find(function (node) { return node.detectedRole === 'product-title'; });
-    const subtitleNode = descendants.find(function (node) { return node.detectedRole === 'product-subtitle'; });
-    const priceNode = descendants.find(function (node) { return node.detectedRole === 'product-price'; });
-    const ctaNode = descendants.find(function (node) { return node.detectedRole === 'product-cta'; });
-    return {
-        title: titleNode ? collectText(titleNode) : undefined,
-        subtitle: subtitleNode ? collectText(subtitleNode) : undefined,
-        price: priceNode ? collectText(priceNode) : undefined,
-        cta: ctaNode ? collectText(ctaNode) : undefined,
-        imageAlt: titleNode ? collectText(titleNode) : 'Product image',
-        _imageNodeId: findImageNodeId(card),
-    };
-}
-function analyzeSelection(rootNode) {
-    const ast = normalizeNode(rootNode);
-    const roleMap = {};
-    const nodes = flattenTree(ast);
-    for (let index = 0; index < nodes.length; index += 1) {
-        const node = nodes[index];
-        roleMap[node.id] = {
-            role: node.detectedRole || 'other',
-            confidence: node.detectedRole && node.detectedRole !== 'other' ? 1 : 0,
-        };
-    }
-    const productContainer = findProductListContainer(ast);
-    const productCards = findProductCards(ast, productContainer);
-    const summaryNode = findSummaryNode(ast);
-    const primaryCtaNode = findPrimaryCtaNode(ast, productContainer);
-    const disclaimerNode = findDisclaimerNode(ast);
-    const headlineNode = findNodesByRole(ast, 'headline', 0)[0];
-    const subtextNode = findNodesByRole(ast, 'subtext', 0)[0];
-    const eyebrowNode = findNodesByRole(ast, 'eyebrow', 0)[0];
-    const products = productCards.map(buildProduct);
-    const summary = buildSummary(ast);
-    const schema = {
-        pattern: resolvePattern(ast, products.length, !!summary),
-        layout: ast.bounds.width < constants_1.MOBILE_WIDTH_THRESHOLD ? 'mobile' : 'desktop',
-        headline: headlineNode ? collectText(headlineNode) : undefined,
-        subtext: subtextNode ? collectText(subtextNode) : undefined,
-        eyebrow: eyebrowNode ? collectText(eyebrowNode) : undefined,
-        closeButton: !!findNodesByRole(ast, 'close-button', 0)[0],
-        products: products,
-        summary: summary,
-        primaryCta: buildPrimaryCta(ast, productContainer),
-        disclaimer: findDisclaimerText(ast),
-    };
-    return {
-        ast: ast,
-        schema: schema,
-        report: {
-            pattern: schema.pattern,
-            warnings: collectWarnings(), //schema
-        },
-        roleMap: roleMap,
-        dynamicNodeIds: collectDynamicNodeIds(ast),
-        headlineNodeId: headlineNode ? headlineNode.id : undefined,
-        subtextNodeId: subtextNode ? subtextNode.id : undefined,
-        eyebrowNodeId: eyebrowNode ? eyebrowNode.id : undefined,
-        summaryNodeId: summaryNode ? summaryNode.id : undefined,
-        productContainerNodeId: productContainer ? productContainer.id : undefined,
-        productCardNodeIds: productCards.map(function (card) { return card.id; }),
-        primaryCtaNodeId: primaryCtaNode ? primaryCtaNode.id : undefined,
-        disclaimerNodeId: disclaimerNode ? disclaimerNode.id : undefined,
-    };
-}
 },
 "packaging/index": function(require, module, exports) {
 "use strict";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildExport = buildExport;
-const index_1 = require("../analysis/index");
-const index_2 = require("../figma/index");
-const index_3 = require("../render/index");
+const analyze_1 = require("../figma/analyze");
+const tree_1 = require("../utils/tree");
+const index_1 = require("../figma/index");
+const index_2 = require("../render/index");
 const string_1 = require("../utils/string");
 async function buildExportFilesForNode(rootNode, filePrefix) {
-    const exportBaseName = (0, index_2.buildExportBaseName)(rootNode);
+    const exportBaseName = (0, index_1.buildExportBaseName)(rootNode);
     const mockupRootFolder = 'mockups';
     const liveTextRootFolder = 'live_text_images';
     const textBakedRootFolder = 'text_baked_images';
-    const nodeIndex = (0, index_2.buildNodeIndex)(rootNode);
-    const analysis = (0, index_1.analyzeSelection)(rootNode);
+    const nodeIndex = (0, index_1.buildNodeIndex)(rootNode);
+    const analysis = (0, analyze_1.analyzeSelection)(rootNode);
     const sourceFrameName = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-    const pageNodes = (0, index_2.getExportPageNodes)(rootNode);
-    const assetTheme = await (0, index_2.getAssetThemeSnapshot)();
-    const mockupAsset = await (0, index_2.exportMockupPng)(rootNode, exportBaseName + '_mockup_1x.png');
-    const assets = await (0, index_2.attachProductAssets)(analysis.schema.products, nodeIndex, exportBaseName);
+    const pageNodes = (0, index_1.getExportPageNodes)(rootNode);
+    const assetTheme = await (0, index_1.getAssetThemeSnapshot)();
+    const mockupAsset = await (0, index_1.exportMockupPng)(rootNode, exportBaseName + '_mockup_1x.png');
+    const assets = await (0, index_1.attachProductAssets)(analysis.schema.products, nodeIndex, exportBaseName);
     const flattenedTextAssetName = exportBaseName + '.png';
     const flattenedLiveAssetName = exportBaseName + '.png';
-    const flattenedTextAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds), [], false, flattenedTextAssetName, index_1.uniqueIds);
-    const flattenedLiveAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds), [], true, flattenedLiveAssetName, index_1.uniqueIds);
-    const flattenedTextVariant = (0, index_3.renderFlattenedHtml)(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true);
-    const flattenedLiveVariant = (0, index_3.renderFlattenedHtml)(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false);
+    const flattenedTextAsset = await (0, index_1.exportFlattenedBackgroundVariant)(rootNode, (0, tree_1.uniqueIds)(analysis.dynamicNodeIds), [], false, flattenedTextAssetName, tree_1.uniqueIds);
+    const flattenedLiveAsset = await (0, index_1.exportFlattenedBackgroundVariant)(rootNode, (0, tree_1.uniqueIds)(analysis.dynamicNodeIds), [], true, flattenedLiveAssetName, tree_1.uniqueIds);
+    const flattenedTextVariant = (0, index_2.renderFlattenedHtml)(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true);
+    const flattenedLiveVariant = (0, index_2.renderFlattenedHtml)(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false);
     const pageVariants = [];
     for (let index = 0; index < pageNodes.length; index += 1) {
-        const pageAnalysis = (0, index_1.analyzeSelection)(pageNodes[index].node);
-        const pageVariant = (0, index_3.renderFlattenedHtml)(pageAnalysis.ast, pageAnalysis, '', false);
+        const pageAnalysis = (0, analyze_1.analyzeSelection)(pageNodes[index].node);
+        const pageVariant = (0, index_2.renderFlattenedHtml)(pageAnalysis.ast, pageAnalysis, '', false);
         pageVariants.push({
             key: pageNodes[index].key,
             variant: pageVariant,
             analysis: pageAnalysis,
         });
     }
-    const usiJsFile = (0, index_3.buildUsiJsFile)(pageVariants);
+    const usiJsFile = (0, index_2.buildUsiJsFile)(pageVariants);
     const images = [];
     if (mockupAsset)
         images.push({ name: mockupAsset.name, href: '../' + mockupRootFolder + '/' + mockupAsset.name });
@@ -2195,7 +2210,7 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
     const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
     const formattedDevCss = (0, string_1.formatFileText)('devmode.css', flattenedTextVariant.css);
     const formattedDevJs = (0, string_1.formatFileText)('devmode.js', flattenedTextVariant.js);
-    const previewHtml = (0, index_3.renderPreviewIndex)(previewTitle, images, {
+    const previewHtml = (0, index_2.renderPreviewIndex)(previewTitle, images, {
         bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
         cssSource: formattedDevCss,
         jsSource: formattedDevJs
@@ -2279,14 +2294,14 @@ async function buildExport(rootNodes) {
         throw new Error('No exportable frames found on the current page.');
     }
     if (nodes.length === 1) {
-        const exportBaseName = (0, index_2.buildExportBaseName)(nodes[0]);
+        const exportBaseName = (0, index_1.buildExportBaseName)(nodes[0]);
         const single = await buildExportFilesForNode(nodes[0], exportBaseName);
         return {
-            packageFileName: (0, index_2.buildExportPackageName)(nodes),
+            packageFileName: (0, index_1.buildExportPackageName)(nodes),
             files: [
                 {
                     name: 'index.html',
-                    text: (0, string_1.formatFileText)('index.html', (0, index_3.renderMultiExportIndex)([
+                    text: (0, string_1.formatFileText)('index.html', (0, index_2.renderMultiExportIndex)([
                         {
                             name: nodes[0] && nodes[0].name ? String(nodes[0].name) : exportBaseName,
                             href: exportBaseName + '/index.html',
@@ -2314,7 +2329,7 @@ async function buildExport(rootNodes) {
     let sharedAssetTheme = [];
     for (let index = 0; index < nodes.length; index += 1) {
         const node = nodes[index];
-        const exportBaseName = (0, index_2.buildExportBaseName)(node);
+        const exportBaseName = (0, index_1.buildExportBaseName)(node);
         const result = await buildExportFilesForNode(node, exportBaseName);
         allFiles.push(...result.files);
         importEntries.push(result.importManifest);
@@ -2344,16 +2359,16 @@ async function buildExport(rootNodes) {
     }
     allFiles.unshift({
         name: 'index.html',
-        text: (0, string_1.formatFileText)('index.html', (0, index_3.renderMultiExportIndex)(exportEntries)),
+        text: (0, string_1.formatFileText)('index.html', (0, index_2.renderMultiExportIndex)(exportEntries)),
     });
     if (mockupEntries.length) {
         allFiles.unshift({
             name: 'mockup_review.html',
-            text: (0, string_1.formatFileText)('mockup_review.html', (0, index_3.renderMockupReviewIndex)(mockupEntries)),
+            text: (0, string_1.formatFileText)('mockup_review.html', (0, index_2.renderMockupReviewIndex)(mockupEntries)),
         });
     }
     return {
-        packageFileName: (0, index_2.buildExportPackageName)(nodes),
+        packageFileName: (0, index_1.buildExportPackageName)(nodes),
         files: allFiles,
         report: {
             pattern: 'multi_frame',
@@ -2364,7 +2379,7 @@ async function buildExport(rootNodes) {
             exports: nodes.map(function (node) {
                 return {
                     name: node && node.name ? String(node.name) : 'frame',
-                    folder: (0, index_2.buildExportBaseName)(node),
+                    folder: (0, index_1.buildExportBaseName)(node),
                 };
             }),
         },
@@ -2950,10 +2965,10 @@ exports.buildUsiJsFile = buildUsiJsFile;
 const string_1 = require("../utils/string");
 const constants_1 = require("../constants");
 const css_1 = require("../utils/css");
-const index_1 = require("../analysis/index");
+const tree_1 = require("../utils/tree");
 const PRODUCT_PLACEHOLDER_IMAGE = "https://placehold.co/600x400/EEE/31343C";
 function hasInsertedComponent(root, componentId) {
-    return (0, index_1.flattenTree)(root).some(function (node) {
+    return (0, tree_1.flattenTree)(root).some(function (node) {
         return !node.ignored && node.componentOverride === componentId;
     });
 }
@@ -2986,7 +3001,7 @@ function componentDefinitionForNode(node) {
     return constants_1.COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || "other"];
 }
 function componentText(node, definition) {
-    const text = (0, index_1.collectText)(node) || node.text || node.name || "";
+    const text = (0, tree_1.collectText)(node) || node.text || node.name || "";
     if (text)
         return text;
     return definition && definition.render.fallbackText ? definition.render.fallbackText : "";
@@ -3190,14 +3205,14 @@ function flattenedBoxDeclarations(node, frameScale, extra) {
 function findDescendantRoleNode(root, role) {
     if (!root)
         return undefined;
-    return (0, index_1.pickBestNode)((0, index_1.findNodesByRole)(root, role, 0.1));
+    return (0, tree_1.pickBestNode)((0, tree_1.findNodesByRole)(root, role, 0.1));
 }
 function resolveSummaryTitle(summaryNode) {
     if (!summaryNode)
         return undefined;
     for (let index = 0; index < summaryNode.children.length; index += 1) {
         const child = summaryNode.children[index];
-        const text = String(child.text || (0, index_1.collectText)(child) || "").trim();
+        const text = String(child.text || (0, tree_1.collectText)(child) || "").trim();
         if (!text)
             continue;
         if (!/(subtotal|discount|total|\$)/i.test(text))
@@ -3239,18 +3254,18 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const frameScale = 1;
     const scaledRootWidth = (0, css_1.scalePx)(root.bounds.width, frameScale) || root.bounds.width;
     const scaledRootHeight = (0, css_1.scalePx)(root.bounds.height, frameScale) || root.bounds.height;
-    const headlineNode = (0, index_1.findNormalizedNodeById)(root, analysis.headlineNodeId);
-    const subtextNode = (0, index_1.findNormalizedNodeById)(root, analysis.subtextNodeId);
-    const eyebrowNode = (0, index_1.findNormalizedNodeById)(root, analysis.eyebrowNodeId);
-    const ctaNode = (0, index_1.findNormalizedNodeById)(root, analysis.primaryCtaNodeId);
-    const productContainerNode = (0, index_1.findNormalizedNodeById)(root, analysis.productContainerNodeId);
+    const headlineNode = (0, tree_1.findNormalizedNodeById)(root, analysis.headlineNodeId);
+    const subtextNode = (0, tree_1.findNormalizedNodeById)(root, analysis.subtextNodeId);
+    const eyebrowNode = (0, tree_1.findNormalizedNodeById)(root, analysis.eyebrowNodeId);
+    const ctaNode = (0, tree_1.findNormalizedNodeById)(root, analysis.primaryCtaNodeId);
+    const productContainerNode = (0, tree_1.findNormalizedNodeById)(root, analysis.productContainerNodeId);
     const productCardNodes = analysis.productCardNodeIds
         .map(function (id) {
-        return (0, index_1.findNormalizedNodeById)(root, id);
+        return (0, tree_1.findNormalizedNodeById)(root, id);
     })
         .filter(Boolean);
-    const summaryNode = (0, index_1.findNormalizedNodeById)(root, analysis.summaryNodeId);
-    const closeCandidates = (0, index_1.findNodesByRole)(root, "close-button", 0.35);
+    const summaryNode = (0, tree_1.findNormalizedNodeById)(root, analysis.summaryNodeId);
+    const closeCandidates = (0, tree_1.findNodesByRole)(root, "close-button", 0.35);
     const closeNode = closeCandidates.slice().sort(function (a, b) {
         if (Math.abs(a.bounds.x - b.bounds.x) > 2)
             return b.bounds.x - a.bounds.x;
@@ -3259,9 +3274,9 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         return a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height;
     })[0];
     const closeVisualNode = closeNode
-        ? (0, index_1.flattenTree)(closeNode)
+        ? (0, tree_1.flattenTree)(closeNode)
             .filter(function (node) {
-            return !!(0, index_1.collectText)(node).trim() || node.type === "VECTOR" || node.type === "ELLIPSE";
+            return !!(0, tree_1.collectText)(node).trim() || node.type === "VECTOR" || node.type === "ELLIPSE";
         })
             .sort(function (a, b) {
             if (Math.abs(a.bounds.x - b.bounds.x) > 2)
@@ -3281,20 +3296,20 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const summaryTotalNode = findDescendantRoleNode(summaryNode, "summary-total");
     const productBounds = productContainerNode ? productContainerNode.bounds : buildSyntheticBounds(productCardNodes);
     const mainBounds = combineBounds([eyebrowNode, headlineNode, subtextNode, ctaNode]);
-    const headlineText = analysis.schema.headline || (headlineNode ? (0, index_1.collectText)(headlineNode) : "");
+    const headlineText = analysis.schema.headline || (headlineNode ? (0, tree_1.collectText)(headlineNode) : "");
     const eyebrowText = (() => {
-        const value = analysis.schema.eyebrow || (eyebrowNode ? (0, index_1.collectText)(eyebrowNode) : "");
+        const value = analysis.schema.eyebrow || (eyebrowNode ? (0, tree_1.collectText)(eyebrowNode) : "");
         if (!value)
             return "";
         if (/\$|subtotal|discount|total/i.test(value))
             return "";
         return value;
     })();
-    const subtextText = analysis.schema.subtext || (subtextNode ? (0, index_1.collectText)(subtextNode) : "");
+    const subtextText = analysis.schema.subtext || (subtextNode ? (0, tree_1.collectText)(subtextNode) : "");
     const ctaLabel = analysis.schema.primaryCta && analysis.schema.primaryCta.label
         ? analysis.schema.primaryCta.label
         : ctaNode
-            ? (0, index_1.collectText)(ctaNode)
+            ? (0, tree_1.collectText)(ctaNode)
             : "Redeem Now";
     const showEyebrowInVariant = hideVisibleText ? false : !!eyebrowText;
     const showHeadlineInVariant = hideVisibleText ? false : !!headlineText;
@@ -3426,17 +3441,17 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const flattenedExtraAsideHtml = renderExtraRegionNodes(root, "aside", flattenedExcludedIds, hideVisibleText);
     const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, "utility", flattenedExcludedIds, hideVisibleText);
     // Explicitly render missing components to ensure they appear in flattened HTML
-    const progressBarNodes = (0, index_1.findNodesByRole)(root, "progress", 0.35);
-    const countdownNodes = (0, index_1.findNodesByRole)(root, "countdown", 0.35);
-    const surveyNodes = topLevelNodes((0, index_1.findNodesByRole)(root, "survey", 0.35), root);
-    const emailInputNodes = (0, index_1.findNodesByRole)(root, "email-input", 0.35);
-    const phoneInputNodes = (0, index_1.findNodesByRole)(root, "phone-input", 0.35);
-    const copyCouponNodes = topLevelNodes((0, index_1.findNodesByRole)(root, "copy-coupon", 0.35), root);
-    const noThanksNodes = (0, index_1.findNodesByRole)(root, "secondary-cta", 0.35);
-    const optinNodes = topLevelNodes((0, index_1.findNodesByRole)(root, "optin", 0.35), root);
-    const mediaPanelNodes = (0, index_1.findNodesByRole)(root, "image", 0.35);
-    const disclaimerNodes = (0, index_1.findNodesByRole)(root, "disclaimer", 0.35);
-    const dividerNodes = (0, index_1.findNodesByRole)(root, "divider", 0.35);
+    const progressBarNodes = (0, tree_1.findNodesByRole)(root, "progress", 0.35);
+    const countdownNodes = (0, tree_1.findNodesByRole)(root, "countdown", 0.35);
+    const surveyNodes = topLevelNodes((0, tree_1.findNodesByRole)(root, "survey", 0.35), root);
+    const emailInputNodes = (0, tree_1.findNodesByRole)(root, "email-input", 0.35);
+    const phoneInputNodes = (0, tree_1.findNodesByRole)(root, "phone-input", 0.35);
+    const copyCouponNodes = topLevelNodes((0, tree_1.findNodesByRole)(root, "copy-coupon", 0.35), root);
+    const noThanksNodes = (0, tree_1.findNodesByRole)(root, "secondary-cta", 0.35);
+    const optinNodes = topLevelNodes((0, tree_1.findNodesByRole)(root, "optin", 0.35), root);
+    const mediaPanelNodes = (0, tree_1.findNodesByRole)(root, "image", 0.35);
+    const disclaimerNodes = (0, tree_1.findNodesByRole)(root, "disclaimer", 0.35);
+    const dividerNodes = (0, tree_1.findNodesByRole)(root, "divider", 0.35);
     const productSubtitleNodes = (function () {
         const subtitles = [];
         productCardNodes.forEach(function (card) {
@@ -3572,7 +3587,7 @@ button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_cl
 `.trim();
     const productCardCss = productCardNodes
         .map(function (card, index) {
-        const imageNode = (0, index_1.findNormalizedNodeById)(card, (0, index_1.findImageNodeId)(card));
+        const imageNode = (0, tree_1.findNormalizedNodeById)(card, (0, tree_1.findImageNodeId)(card));
         const imageRule = imageNode
             ? `
 .usi_product${index + 1} .usi_product_image {

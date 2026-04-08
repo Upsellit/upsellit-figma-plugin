@@ -16,7 +16,7 @@ import {
 	findNormalizedNodeById,
 	flattenTree,
 	pickBestNode
-} from "../analysis/index";
+} from "../utils/tree";
 
 const PRODUCT_PLACEHOLDER_IMAGE = "https://placehold.co/600x400/EEE/31343C";
 

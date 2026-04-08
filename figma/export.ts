@@ -3,7 +3,8 @@
 import { AnyNode, ExportFile, NodeBounds, NodeStyle, SizingMode, NormalizedNode } from '../types';
 import { sanitizeFilePart } from '../utils/string';
 import { getNodeChildren, getPluginMeta, setPluginMeta } from './shared';
-import { flattenTree, normalizeNode } from '../analysis/index';
+import { flattenTree } from '../utils/tree';
+import { normalizeNode } from './analyze';
 
 export function getYearMonth(): string {
   const now = new Date();
