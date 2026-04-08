@@ -6,7 +6,7 @@ import {
   createAssetComponentInstance,
   getExportRoots,
 } from './figma/index';
-import { buildSemanticExport } from './packaging/index';
+import { buildExport } from './packaging/index';
 
 figma.showUI(__html__, {
   width: 440,
@@ -41,7 +41,7 @@ figma.ui.onmessage = async function (msg: AnyNode) {
     return;
   }
 
-  if (msg.type === 'export-semantic') {
+  if (msg.type === 'export-campaigns') {
     const roots = getExportRoots(figma.currentPage.selection, figma.currentPage);
     if (!roots.length) {
       figma.ui.postMessage({
@@ -52,7 +52,7 @@ figma.ui.onmessage = async function (msg: AnyNode) {
     }
 
     try {
-      const payload = await buildSemanticExport(roots);
+      const payload = await buildExport(roots);
       figma.ui.postMessage({
         type: 'package-ready',
         payload: payload,
@@ -60,7 +60,7 @@ figma.ui.onmessage = async function (msg: AnyNode) {
     } catch (error: any) {
       figma.ui.postMessage({
         type: 'error',
-        message: error && error.message ? String(error.message) : 'Semantic export failed.',
+        message: error && error.message ? String(error.message) : 'Export failed.',
       });
     }
   }

@@ -541,7 +541,7 @@ export async function buildAssetComponentNode(componentId: string): Promise<Scen
       break;
     }
     case 'disclaimer_text':
-      node = await createTextLayer('Disclaimer', 'We use your information in accordance with our Privacy Policy.', 10, 320);
+      node = await createTextLayer('Disclaimer', 'We use your information in accordance with our<a href="#">Privacy Policy</a>.', 10, 320);
       await applyThemeText(node as TextNode, theme);
       applyComponentMeta(node, componentId);
       break;

@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8">
-  <title>USI Modal Semantic Export</title>
+  <title>USI Modal Export</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -811,7 +811,7 @@
       statusEl.textContent = 'Analyzing selection...';
       parent.postMessage({
         pluginMessage: {
-          type: 'export-semantic'
+          type: 'export-campaigns'
         }
       }, '*');
     };
@@ -866,7 +866,7 @@
           }
 
           const blob = await zip.generateAsync({ type: 'blob' });
-          downloadBlob(blob, payload.packageFileName || 'semantic-export.zip');
+          downloadBlob(blob, payload.packageFileName || 'campaign-export.zip');
 
           statusEl.textContent = 'Downloaded Export Package.';
         } catch (error) {

@@ -30,7 +30,6 @@ function component(
 // This catalog is the source of truth for the plugin:
 // 1. the UI reads it to show insertable assets
 // 2. inserted Figma nodes store the matching component id in pluginData
-// 3. semantic + flattened renderers use the render metadata below
 export const COMMON_COMPONENTS: CommonComponentDefinition[] = [
 	component("modal_shell", "Modal Shell", "modal-root", "Standard centered modal shell.", "shell", {
 		htmlTag: "article",
@@ -251,7 +250,7 @@ export const COMMON_COMPONENTS: CommonComponentDefinition[] = [
 		className: "usi_disclaimer",
 		region: "main",
 		kind: "text",
-		fallbackText: "We use your information in accordance with our Privacy Policy."
+		fallbackText: "We use your information in accordance with our <a href=\"#\">Privacy Policy</a>."
 	}),
 	component("media_panel", "Media Panel", "image", "Decorative or supporting media region.", "content", {
 		htmlTag: "div",

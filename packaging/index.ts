@@ -15,11 +15,9 @@ import {
 import {
   renderFlattenedHtml,
   buildUsiJsFile,
-  extractCampaignCss,
   renderMultiExportIndex,
   renderMockupReviewIndex,
   renderPreviewIndex,
-  //renderSemanticHtml,
 } from '../render/index';
 import { formatFileText } from '../utils/string';
 
@@ -57,7 +55,6 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
   const assetTheme = await getAssetThemeSnapshot();
   const mockupAsset = await exportMockupPng(rootNode, exportBaseName + '_mockup_1x.png');
   const assets = await attachProductAssets(analysis.schema.products, nodeIndex, exportBaseName);
-  //const semantic = renderSemanticHtml(analysis.schema, analysis.ast);
   const flattenedTextAssetName = exportBaseName + '.png';
   const flattenedLiveAssetName = exportBaseName + '.png';
   const flattenedTextAsset = await exportFlattenedBackgroundVariant(
@@ -97,10 +94,8 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
     images.push({ name: assets[index].name, href: assets[index].name });
   }
   const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-  const formattedDevCss = formatFileText('devmode.css', extractCampaignCss(flattenedTextVariant.css));
+  const formattedDevCss = formatFileText('devmode.css', flattenedTextVariant.css);
   const formattedDevJs = formatFileText('devmode.js', flattenedTextVariant.js);
-  // console.log(formattedDevCss);
-  // console.log(formattedDevJs);
   const previewHtml = renderPreviewIndex(
     previewTitle,
     images,
@@ -154,12 +149,11 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
     }
     return {
       name: file.name,
-      text: file.text//formatFileText(file.name, file.text),
+      text: file.text
     };
   });
 
-  console.log(formattedFiles);
-  return {
+  const result = {
     files: formattedFiles,
     report: analysis.report,
     schema: analysis.schema,
@@ -180,10 +174,12 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
         jsFiles: ['js/usi_js.js', 'js/flattened_text_baked.js'],
       },
     },
-  };
+  }
+  console.log(result);
+  return result;
 }
 
-export async function buildSemanticExport(rootNodes: any | any[]): Promise<{
+export async function buildExport(rootNodes: any | any[]): Promise<{
   packageFileName: string;
   files: ExportFile[];
   report: any;

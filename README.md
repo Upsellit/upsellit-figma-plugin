@@ -1,6 +1,6 @@
 # Upsellit Modal Plugin
 
-A Figma plugin for building Upsellit modal campaigns from reusable asset components and exporting them into semantic and flattened campaign packages.
+A Figma plugin for building Upsellit modal campaigns from reusable asset components and exporting them into campaign packages.
 
 ## Designer
 
@@ -30,7 +30,6 @@ Each campaign folder includes:
 - `index.html`
 - `flattened_live_text.html`
 - `flattened_text_baked.html`
-- `css/semantic.css`
 - `css/flattened_live_text.css`
 - `css/flattened_text_baked.css`
 - `js/usi_js.js`
@@ -45,7 +44,7 @@ The export root also includes shared image folders:
 The frame `index.html` preview includes:
 
 - image gallery
-- iframe previews for semantic and flattened variants
+- iframe previews
 - flattened campaign CSS
 - flattened `usi_js`
 
@@ -99,14 +98,10 @@ npm run lint
 - `analysis/index.ts`
   - Component-driven AST and schema assembly
 
-- `render/semantic.ts`
-  - Semantic campaign output
 - `render/flattened.ts`
   - Flattened HTML/CSS/JS output
 - `render/preview-pages.ts`
   - Frame and root preview pages
-- `render/devmode.ts`
-  - Helpers for extracting flattened campaign CSS for preview pages
 - `render/index.ts`
   - Barrel exports
 
@@ -120,10 +115,8 @@ The plugin is component-driven. It does not depend on generic layer heuristics a
 
 The main export variants are:
 
-- Semantic
-  - structured HTML and CSS based on inserted components
 - Flattened Live Text
-  - semantic-style HTML with major regions positioned to match the design
+  - HTML with major regions positioned to match the design
   - live text and live interactive elements where allowed
 - Flattened Text Baked
   - uses the baked background image with only the required live HTML remaining
@@ -139,7 +132,7 @@ In most cases, adding a new component means editing four places:
    - keep render metadata here
 3. `figma/builders.ts`
    - add the builder used by the asset source page and `Add`
-4. `render/flattened.ts` or `render/semantic.ts`
+4. `render/flattened.ts`
    - only if the component needs custom export behavior
 
 Rule of thumb:

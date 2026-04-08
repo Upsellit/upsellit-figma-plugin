@@ -203,5 +203,5 @@ export function formatFileText(name: string, text: string): string {
   if (/\.css$/i.test(name)) return formatCss(text);
   if (/\.json$/i.test(name)) return formatJson(JSON.parse(text));
   if (/\.js$/i.test(name)) return formatJs(text);
-  return text;
+  return text.trim();
 }

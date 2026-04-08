@@ -38,7 +38,7 @@ figma.ui.onmessage = async function (msg) {
         }
         return;
     }
-    if (msg.type === 'export-semantic') {
+    if (msg.type === 'export-campaigns') {
         const roots = (0, index_1.getExportRoots)(figma.currentPage.selection, figma.currentPage);
         if (!roots.length) {
             figma.ui.postMessage({
@@ -48,7 +48,7 @@ figma.ui.onmessage = async function (msg) {
             return;
         }
         try {
-            const payload = await (0, index_2.buildSemanticExport)(roots);
+            const payload = await (0, index_2.buildExport)(roots);
             figma.ui.postMessage({
                 type: 'package-ready',
                 payload: payload,
@@ -57,7 +57,7 @@ figma.ui.onmessage = async function (msg) {
         catch (error) {
             figma.ui.postMessage({
                 type: 'error',
-                message: error && error.message ? String(error.message) : 'Semantic export failed.',
+                message: error && error.message ? String(error.message) : 'Export failed.',
             });
         }
     }
@@ -86,7 +86,6 @@ function component(id, label, role, description, category, render) {
 // This catalog is the source of truth for the plugin:
 // 1. the UI reads it to show insertable assets
 // 2. inserted Figma nodes store the matching component id in pluginData
-// 3. semantic + flattened renderers use the render metadata below
 exports.COMMON_COMPONENTS = [
     component("modal_shell", "Modal Shell", "modal-root", "Standard centered modal shell.", "shell", {
         htmlTag: "article",
@@ -300,7 +299,7 @@ exports.COMMON_COMPONENTS = [
         className: "usi_disclaimer",
         region: "main",
         kind: "text",
-        fallbackText: "We use your information in accordance with our Privacy Policy."
+        fallbackText: "We use your information in accordance with our <a href=\"#\">Privacy Policy</a>."
     }),
     component("media_panel", "Media Panel", "image", "Decorative or supporting media region.", "content", {
         htmlTag: "div",
@@ -1009,7 +1008,7 @@ async function buildAssetComponentNode(componentId) {
             break;
         }
         case 'disclaimer_text':
-            node = await createTextLayer('Disclaimer', 'We use your information in accordance with our Privacy Policy.', 10, 320);
+            node = await createTextLayer('Disclaimer', 'We use your information in accordance with our<a href="#">Privacy Policy</a>.', 10, 320);
             await (0, theme_1.applyThemeText)(node, theme);
             (0, shared_1.applyComponentMeta)(node, componentId);
             break;
@@ -1781,7 +1780,7 @@ function formatFileText(name, text) {
         return formatJson(JSON.parse(text));
     if (/\.js$/i.test(name))
         return formatJs(text);
-    return text;
+    return text.trim();
 }
 },
 "analysis/index": function(require, module, exports) {
@@ -2149,7 +2148,7 @@ function analyzeSelection(rootNode) {
 "use strict";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildSemanticExport = buildSemanticExport;
+exports.buildExport = buildExport;
 const index_1 = require("../analysis/index");
 const index_2 = require("../figma/index");
 const index_3 = require("../render/index");
@@ -2166,7 +2165,6 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
     const assetTheme = await (0, index_2.getAssetThemeSnapshot)();
     const mockupAsset = await (0, index_2.exportMockupPng)(rootNode, exportBaseName + '_mockup_1x.png');
     const assets = await (0, index_2.attachProductAssets)(analysis.schema.products, nodeIndex, exportBaseName);
-    //const semantic = renderSemanticHtml(analysis.schema, analysis.ast);
     const flattenedTextAssetName = exportBaseName + '.png';
     const flattenedLiveAssetName = exportBaseName + '.png';
     const flattenedTextAsset = await (0, index_2.exportFlattenedBackgroundVariant)(rootNode, (0, index_1.uniqueIds)(analysis.dynamicNodeIds), [], false, flattenedTextAssetName, index_1.uniqueIds);
@@ -2195,10 +2193,8 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
         images.push({ name: assets[index].name, href: assets[index].name });
     }
     const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-    const formattedDevCss = (0, string_1.formatFileText)('devmode.css', (0, index_3.extractCampaignCss)(flattenedTextVariant.css));
+    const formattedDevCss = (0, string_1.formatFileText)('devmode.css', flattenedTextVariant.css);
     const formattedDevJs = (0, string_1.formatFileText)('devmode.js', flattenedTextVariant.js);
-    // console.log(formattedDevCss);
-    // console.log(formattedDevJs);
     const previewHtml = (0, index_3.renderPreviewIndex)(previewTitle, images, {
         bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
         cssSource: formattedDevCss,
@@ -2249,11 +2245,10 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
         }
         return {
             name: file.name,
-            text: file.text //formatFileText(file.name, file.text),
+            text: file.text
         };
     });
-    console.log(formattedFiles);
-    return {
+    const result = {
         files: formattedFiles,
         report: analysis.report,
         schema: analysis.schema,
@@ -2275,8 +2270,10 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
             },
         },
     };
+    console.log(result);
+    return result;
 }
-async function buildSemanticExport(rootNodes) {
+async function buildExport(rootNodes) {
     const nodes = Array.isArray(rootNodes) ? rootNodes.filter(Boolean) : rootNodes ? [rootNodes] : [];
     if (!nodes.length) {
         throw new Error('No exportable frames found on the current page.');
@@ -2391,20 +2388,382 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.renderFlattenedHtml = exports.buildUsiJsFile = exports.extractCampaignCss = void 0;
+exports.renderFlattenedHtml = exports.buildUsiJsFile = void 0;
+exports.renderMultiExportIndex = renderMultiExportIndex;
+exports.renderMockupReviewIndex = renderMockupReviewIndex;
 __exportStar(require("./preview-pages"), exports);
-var devmode_1 = require("./devmode");
-Object.defineProperty(exports, "extractCampaignCss", { enumerable: true, get: function () { return devmode_1.extractCampaignCss; } });
+const string_1 = require("../utils/string");
 var flattened_1 = require("./flattened");
 Object.defineProperty(exports, "buildUsiJsFile", { enumerable: true, get: function () { return flattened_1.buildUsiJsFile; } });
 Object.defineProperty(exports, "renderFlattenedHtml", { enumerable: true, get: function () { return flattened_1.renderFlattenedHtml; } });
+function renderMultiExportIndex(entries) {
+    return (0, string_1.formatHtml)(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Export Index</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --usi_bg:#f5f5f5;
+      --usi_surface:#ffffff;
+      --usi_surface_alt:#f8f8f8;
+      --usi_border:#dddddd;
+      --usi_text:#111111;
+      --usi_muted:#555555;
+      --usi_link:#0b57d0;
+      --usi_media:#f8f8f8;
+      --usi_nav:#eef3fd;
+      --usi_nav_active:#dce8ff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --usi_bg:#111315;
+        --usi_surface:#1a1d21;
+        --usi_surface_alt:#121417;
+        --usi_border:#31353b;
+        --usi_text:#f1f3f4;
+        --usi_muted:#aab1b9;
+        --usi_link:#8ab4f8;
+        --usi_media:#0f1113;
+        --usi_nav:#1d2633;
+        --usi_nav_active:#27364a;
+      }
+    }
+
+    body {
+      margin:0;
+      padding:24px;
+      font-family:Helvetica,Arial,sans-serif;
+      background:var(--usi_bg);
+      color:var(--usi_text);
+    }
+
+    * { box-sizing:border-box; }
+    img { max-width: 100%; }
+    iframe { width: 100%; height: 600px;}
+    code { white-space: pre-wrap; }
+
+
+    * { box-sizing: border-box; }
+    html { font-size: 16px; }
+    body {
+      margin: 0;
+      background: rgba(0, 0, 0, 0.9);
+      font-family: Inter, Arial, sans-serif;
+      tab-size: 2;
+    }
+
+    .usi_export_root {
+      max-width:1440px;
+      margin:0 auto;
+      display:flex;
+      flex-direction:column;
+      gap:20px;
+    }
+
+    .usi_export_header,
+    .usi_export_card {
+      background:var(--usi_surface);
+      border:1px solid var(--usi_border);
+      border-radius:16px;
+      padding:20px;
+    }
+
+    .usi_export_header h1,
+    .usi_export_header p,
+    .usi_export_card h2 {
+      margin:0 0 12px 0;
+    }
+
+    .usi_export_grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
+      gap:20px;
+    }
+
+    .usi_export_card a {
+      color:var(--usi_link);
+      text-decoration:none;
+      font-weight:700;
+    }
+
+    .usi_export_open {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:0 14px;
+      border:1px solid var(--usi_border);
+      border-radius:999px;
+      background:var(--usi_nav);
+      transition:background-color .15s ease,border-color .15s ease;
+    }
+
+    .usi_export_open:hover {
+      background:var(--usi_nav_active);
+      border-color:var(--usi_link);
+    }
+
+    .usi_export_card_action {
+      margin-bottom:12px;
+    }
+
+    .usi_export_frame {
+      height:720px;
+      border:1px solid var(--usi_border);
+      border-radius:12px;
+      background:var(--usi_surface_alt);
+      overflow:auto;
+    }
+
+    .usi_export_card iframe {
+      width:100%;
+      height:700px;
+      border:0;
+      background:#fff;
+      transform-origin:0 0;
+      display:block;
+    }
+
+    .usi_export_gallery {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+      gap:12px;
+      margin-bottom:16px;
+    }
+
+    .usi_export_gallery figure {
+      margin:0;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    .usi_export_gallery a {
+      display:block;
+      border:1px solid var(--usi_border);
+      border-radius:10px;
+      overflow:hidden;
+      background:var(--usi_surface);
+    }
+
+    .usi_export_gallery img {
+      display:block;
+      width:100%;
+      height:120px;
+      object-fit:contain;
+      background:var(--usi_media);
+    }
+
+    .usi_export_gallery figcaption {
+      font-size:12px;
+      color:var(--usi_muted);
+      word-break:break-word;
+    }
+  </style>
+</head>
+<body>
+  <main class="usi_export_root">
+    <section class="usi_export_header">
+      <h1>Export Index</h1>
+      <p>Preview each exported frame below.</p>
+    </section>
+
+    <section class="usi_export_grid">
+      ${entries
+        .map((entry) => {
+        const galleryHtml = entry.images.length
+            ? `
+              <div class="usi_export_gallery">
+                ${entry.images
+                .map((image) => `
+                    <figure>
+                      <a href="${image.href}" target="_blank" rel="noreferrer">
+                        <img src="${image.href}" alt="${(0, string_1.escapeHtml)(image.name)}" />
+                      </a>
+                      <figcaption>${(0, string_1.escapeHtml)(image.name)}</figcaption>
+                    </figure>
+                  `)
+                .join('')}
+              </div>
+            `
+            : '';
+        return `
+            <article class="usi_export_card">
+              <div class="usi_export_card_action">
+                <a class="usi_export_open" href="${entry.href}">
+                  Open ${(0, string_1.escapeHtml)(entry.name)}
+                </a>
+              </div>
+
+              <h2>${(0, string_1.escapeHtml)(entry.name)}</h2>
+
+              ${galleryHtml}
+
+              <div class="usi_export_frame">
+                <iframe
+                  loading="lazy"
+                  src="${entry.href}"
+                  title="${(0, string_1.escapeHtml)(entry.name)}"
+                ></iframe>
+              </div>
+            </article>
+          `;
+    })
+        .join('')}
+    </section>
+  </main>
+</body>
+</html>
+`);
+}
+function renderMockupReviewIndex(entries) {
+    return (0, string_1.formatHtml)(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockups</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --usi_bg:#f5f5f5;
+      --usi_surface:#ffffff;
+      --usi_border:#dddddd;
+      --usi_text:#111111;
+      --usi_muted:#555555;
+      --usi_media:#f8f8f8;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --usi_bg:#111315;
+        --usi_surface:#1a1d21;
+        --usi_border:#31353b;
+        --usi_text:#f1f3f4;
+        --usi_muted:#aab1b9;
+        --usi_media:#0f1113;
+      }
+    }
+
+    body {
+      margin:0;
+      padding:24px;
+      font-family:Helvetica,Arial,sans-serif;
+      background:var(--usi_bg);
+      color:var(--usi_text);
+    }
+
+    * { box-sizing:border-box; }
+
+    .usi_mockup_root {
+      max-width:1480px;
+      margin:0 auto;
+      display:flex;
+      flex-direction:column;
+      gap:20px;
+    }
+
+    .usi_mockup_header,
+    .usi_mockup_section {
+      background:var(--usi_surface);
+      border:1px solid var(--usi_border);
+      border-radius:16px;
+      padding:20px;
+    }
+
+    .usi_mockup_header h1,
+    .usi_mockup_header p,
+    .usi_mockup_section h2 {
+      margin:0 0 12px 0;
+    }
+
+    .usi_mockup_gallery {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+      gap:20px;
+    }
+
+    .usi_mockup_card {
+      margin:0;
+      margin-bottom:3em;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .usi_mockup_card a {
+      position:relative;
+      display:block;
+      border:10px solid var(--usi_muted);
+      border-radius:12px;
+      overflow:hidden;
+      background:var(--usi_surface);
+      border-bottom:40px solid var(--usi_muted);
+      border-top:40px solid var(--usi_muted);
+      height:600px;
+    }
+
+    .usi_mockup_card img {
+      display:block;
+      width:100%;
+      object-fit:contain;
+      position:absolute;
+      bottom:0;
+      max-height:100%;
+      object-position:right;
+    }
+
+    .usi_mockup_card figcaption {
+      font-size:14px;
+      color:var(--usi_muted);
+      word-break:break-word;
+    }
+
+    .usi_mockup_card strong {
+      display:block;
+      color:var(--usi_text);
+      margin-bottom:4px;
+    }
+  </style>
+</head>
+<body>
+  <main class="usi_mockup_root">
+    <section class="usi_mockup_header">
+      <h1>Mockups</h1>
+    </section>
+
+    <section class="usi_mockup_section">
+      <div class="usi_mockup_gallery">
+        ${entries
+        .map((entry) => `
+            <figure class="usi_mockup_card">
+              <a href="${entry.href}" target="_blank" rel="noreferrer">
+                <img src="${entry.href}" alt="${(0, string_1.escapeHtml)(entry.name)}" />
+              </a>
+              <figcaption>
+                <strong>${(0, string_1.escapeHtml)(entry.name)}</strong>
+              </figcaption>
+            </figure>
+          `)
+        .join('')}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+`);
+}
 },
 "render/preview-pages": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderPreviewIndex = renderPreviewIndex;
-exports.renderMultiExportIndex = renderMultiExportIndex;
-exports.renderMockupReviewIndex = renderMockupReviewIndex;
 const string_1 = require("../utils/string");
 function renderPreviewIndex(title, images, devMode) {
     const previews = [
@@ -2414,132 +2773,173 @@ function renderPreviewIndex(title, images, devMode) {
     const cssPlaceholder = '__USI_INDEX_DEV_CSS__';
     const jsPlaceholder = '__USI_INDEX_DEV_JS__';
     const galleryHtml = images.length
-        ? '<section class="usi_preview_gallery"><h2>Images</h2><div class="usi_preview_gallery_grid">' +
-            images
-                .map(function (image) {
-                return '<figure class="usi_preview_gallery_item"><a href="' + image.href + '" target="_blank" rel="noreferrer"><img src="' + image.href + '" alt="' + (0, string_1.escapeHtml)(image.name) + '" /></a><figcaption>' + (0, string_1.escapeHtml)(image.name) + '</figcaption></figure>';
-            })
-                .join('') +
-            '</div></section>'
+        ? `
+      <section class="usi_preview_gallery">
+        <h2>Images</h2>
+        <div class="usi_preview_gallery_grid">
+          ${images
+            .map((image) => `
+              <figure class="usi_preview_gallery_item">
+                <a href="${image.href}" target="_blank" rel="noreferrer">
+                  <img src="${image.href}" alt="${(0, string_1.escapeHtml)(image.name)}" />
+                </a>
+                <figcaption>${(0, string_1.escapeHtml)(image.name)}</figcaption>
+              </figure>
+            `)
+            .join('')}
+        </div>
+      </section>
+    `
         : '';
-    const shell = (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>' +
-        (0, string_1.escapeHtml)(title) +
-        ' Preview</title><style>' +
-        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_surface_alt:#f8f8f8;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_link:#0b57d0;--usi_media:#f8f8f8;--usi_nav:#eef3fd;--usi_nav_active:#dce8ff;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_surface_alt:#121417;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_link:#8ab4f8;--usi_media:#0f1113;--usi_nav:#1d2633;--usi_nav_active:#27364a;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}pre,code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;white-space: pre-wrap;}.usi_preview_shell{display:flex;flex-direction:column;gap:24px;max-width:1400px;margin:0 auto;}.usi_preview_header,.usi_preview_panel,.usi_preview_gallery,.usi_preview_code_card{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px;}.usi_preview_header h1,.usi_preview_panel h2,.usi_preview_gallery h2,.usi_preview_code_card h2,.usi_preview_code_card h3{margin:0;}.usi_preview_header p,.usi_preview_code_card p{margin:0;color:var(--usi_muted);}.usi_preview_card_action a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid var(--usi_border);border-radius:999px;background:var(--usi_nav);color:var(--usi_link);text-decoration:none;font-weight:700;transition:background-color .15s ease,border-color .15s ease;}.usi_preview_card_action a:hover{background:var(--usi_nav_active);border-color:var(--usi_link);}.usi_preview_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;}.usi_preview_frame{height:720px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;}.usi_preview_panel iframe{width:100%;height:600px;border:0;background:background: repeating-conic-gradient(#808080 0 25%, #000000 0 50%) 50% / 20px 20px;transform-origin:0 0;display:block;}.usi_preview_gallery_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;}.usi_preview_gallery_item{margin:0;display:flex;flex-direction:column;gap:8px;}.usi_preview_gallery_item a{display:block;border:1px solid var(--usi_border);border-radius:12px;overflow:hidden;background:var(--usi_surface);}.usi_preview_gallery_item img{display:block;width:100%;height:220px;object-fit:contain;background:var(--usi_media);}.usi_preview_gallery_item figcaption{font-size:13px;color:var(--usi_muted);word-break:break-word;}.usi_preview_code_grid{display:grid;gap:20px;align-items:start;}.usi_preview_code_preview img{display:block;width:100%;height:auto;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_media);}.usi_preview_code_columns{width:100%;}.usi_preview_code_columns pre{margin:0;padding:16px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;white-space:pre;tab-size:2;}@media (max-width:1200px){.usi_preview_code_columns{grid-template-columns:1fr;}}@media (max-width:960px){.usi_preview_code_grid{grid-template-columns:1fr;}}</style></head><body><main class="usi_preview_shell"><section class="usi_preview_header"><h1>' +
-        (0, string_1.escapeHtml)(title) +
-        '</h1><p>Open the exported variants and review the generated flattened campaign code below.</p></section>' +
-        galleryHtml +
-        '<section class="usi_preview_grid">' +
-        previews
-            .map(function (preview) {
-            return '<article class="usi_preview_panel"><div class="usi_preview_card_action"><a href="' + preview.href + '">' + (0, string_1.escapeHtml)(preview.name) + '</a></div><div class="usi_preview_frame"><iframe loading="lazy" src="' + preview.href + '" title="' + (0, string_1.escapeHtml)(preview.name) + '"></iframe></div></article>';
-        })
-            .join('') +
-        '</section><section class="usi_preview_code_card"><h2>Flattened Campaign Code</h2>' +
-        '<p>CSS and JS generated for the flattened campaign output.</p><div class="usi_preview_code_grid"><section class="usi_preview_code_columns"></article>' +
-        '<article><h3>Fusi_js</h3><pre><code>' + jsPlaceholder + '</code></pre></article>' +
-        '<article><h3>CSS</h3><pre><code>' + cssPlaceholder + '</code></pre></section></div></section>' +
-        '</main></body></html>');
+    const shell = (0, string_1.formatHtml)(`
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${(0, string_1.escapeHtml)(title)} Preview</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --usi_bg:#f5f5f5;
+      --usi_surface:#ffffff;
+      --usi_surface_alt:#f8f8f8;
+      --usi_border:#dddddd;
+      --usi_text:#111111;
+      --usi_muted:#555555;
+      --usi_link:#0b57d0;
+      --usi_media:#f8f8f8;
+      --usi_nav:#eef3fd;
+      --usi_nav_active:#dce8ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --usi_bg:#111315;
+        --usi_surface:#1a1d21;
+        --usi_surface_alt:#121417;
+        --usi_border:#31353b;
+        --usi_text:#f1f3f4;
+        --usi_muted:#aab1b9;
+        --usi_link:#8ab4f8;
+        --usi_media:#0f1113;
+        --usi_nav:#1d2633;
+        --usi_nav_active:#27364a;
+      }
+    }
+
+    body {
+      margin:0;
+      padding:24px;
+      font-family:Helvetica,Arial,sans-serif;
+      background:var(--usi_bg);
+      color:var(--usi_text);
+    }
+
+    * { box-sizing:border-box; }
+    img { max-width: 100%; }
+    iframe { width: 100%; height: 600px;}
+    textarea { white-space: pre-wrap; width:100%; height:300px; background:var(--usi_surface_alt); border:1px solid var(--usi_border); border-radius:8px; padding:12px; font-family:monospace; color:var(--usi_text); }
+
+
+    * { box-sizing: border-box; }
+    html { font-size: 16px; }
+    body {
+      margin: 0;
+      background: rgba(0, 0, 0, 0.9);
+      font-family: Inter, Arial, sans-serif;
+      tab-size: 2;
+    }
+
+    .usi_preview_shell {
+      display:flex;
+      flex-direction:column;
+      gap:24px;
+      max-width:1400px;
+      margin:0 auto;
+    }
+
+    .usi_preview_header,
+    .usi_preview_panel,
+    .usi_preview_gallery,
+    .usi_preview_code_card {
+      background:var(--usi_surface);
+      border:1px solid var(--usi_border);
+      border-radius:16px;
+      padding:20px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .usi_preview_grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
+      gap:20px;
+    }
+
+    .usi_preview_frame {
+      height:720px;
+      border:1px solid var(--usi_border);
+      border-radius:12px;
+      background:var(--usi_surface_alt);
+      overflow:auto;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="usi_preview_shell">
+
+    <section class="usi_preview_header">
+      <h1>${(0, string_1.escapeHtml)(title)}</h1>
+      <p>Open the exported variants and review the generated flattened campaign code below.</p>
+    </section>
+
+    ${galleryHtml}
+
+    <section class="usi_preview_grid">
+      ${previews
+        .map((preview) => `
+          <article class="usi_preview_panel">
+            <div class="usi_preview_card_action">
+              <a href="${preview.href}">${(0, string_1.escapeHtml)(preview.name)}</a>
+            </div>
+            <div class="usi_preview_frame">
+              <iframe
+                loading="lazy"
+                src="${preview.href}"
+                title="${(0, string_1.escapeHtml)(preview.name)}"
+              ></iframe>
+            </div>
+          </article>
+        `)
+        .join('')}
+    </section>
+
+    <section class="usi_preview_code_card">
+      <h2>Flattened Campaign Code</h2>
+      <p>CSS and JS generated for the flattened campaign output.</p>
+
+      <div class="usi_preview_code_grid">
+        <article>
+          <h3>usi_js</h3>
+          <textarea>${jsPlaceholder}</textarea>
+        </article>
+
+        <article>
+          <h3>CSS</h3>
+          <textarea>${cssPlaceholder}</textarea>
+        </article>
+      </div>
+    </section>
+
+  </main>
+</body>
+</html>
+`);
     return shell
         .replace(cssPlaceholder, (0, string_1.escapeHtml)(devMode.cssSource))
         .replace(jsPlaceholder, (0, string_1.escapeHtml)(devMode.jsSource));
-}
-function renderMultiExportIndex(entries) {
-    return (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Export Index</title><style>' +
-        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_surface_alt:#f8f8f8;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_link:#0b57d0;--usi_media:#f8f8f8;--usi_nav:#eef3fd;--usi_nav_active:#dce8ff;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_surface_alt:#121417;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_link:#8ab4f8;--usi_media:#0f1113;--usi_nav:#1d2633;--usi_nav_active:#27364a;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}.usi_export_root{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}.usi_export_header,.usi_export_card{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;}.usi_export_header h1,.usi_export_header p,.usi_export_card h2{margin:0 0 12px 0;}.usi_export_grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;}.usi_export_card a{color:var(--usi_link);text-decoration:none;font-weight:700;}.usi_export_open{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid var(--usi_border);border-radius:999px;background:var(--usi_nav);transition:background-color .15s ease,border-color .15s ease;}.usi_export_open:hover{background:var(--usi_nav_active);border-color:var(--usi_link);} .usi_export_card_action{margin-bottom:12px;}.usi_export_frame{height:720px;border:1px solid var(--usi_border);border-radius:12px;background:var(--usi_surface_alt);overflow:auto;}.usi_export_card iframe{width:100%;height:700px;border:0;background:#fff;transform-origin:0 0;display:block;}.usi_export_gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;}.usi_export_gallery figure{margin:0;display:flex;flex-direction:column;gap:6px;}.usi_export_gallery a{display:block;border:1px solid var(--usi_border);border-radius:10px;overflow:hidden;background:var(--usi_surface);}.usi_export_gallery img{display:block;width:100%;height:120px;object-fit:contain;background:var(--usi_media);}.usi_export_gallery figcaption{font-size:12px;color:var(--usi_muted);word-break:break-word;}</style></head><body><main class="usi_export_root"><section class="usi_export_header"><h1>Export Index</h1><p>Preview each exported frame below.</p></section><section class="usi_export_grid">' +
-        entries
-            .map(function (entry) {
-            const galleryHtml = entry.images.length
-                ? '<div class="usi_export_gallery">' +
-                    entry.images
-                        .map(function (image) {
-                        return '<figure><a href="' + image.href + '" target="_blank" rel="noreferrer"><img src="' + image.href + '" alt="' + (0, string_1.escapeHtml)(image.name) + '" /></a><figcaption>' + (0, string_1.escapeHtml)(image.name) + '</figcaption></figure>';
-                    })
-                        .join('') +
-                    '</div>'
-                : '';
-            return '<article class="usi_export_card"><div class="usi_export_card_action"><a class="usi_export_open" href="' + entry.href + '">Open ' + (0, string_1.escapeHtml)(entry.name) + '</a></div><h2>' + (0, string_1.escapeHtml)(entry.name) + '</h2>' + galleryHtml + '<div class="usi_export_frame"><iframe loading="lazy" src="' + entry.href + '" title="' + (0, string_1.escapeHtml)(entry.name) + '"></iframe></div></article>';
-        })
-            .join('') +
-        '</section></main></body></html>');
-}
-function renderMockupReviewIndex(entries) {
-    return (0, string_1.formatHtml)('<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Mockups</title><style>' +
-        ':root{color-scheme:light dark;--usi_bg:#f5f5f5;--usi_surface:#ffffff;--usi_border:#dddddd;--usi_text:#111111;--usi_muted:#555555;--usi_media:#f8f8f8;}@media (prefers-color-scheme: dark){:root{--usi_bg:#111315;--usi_surface:#1a1d21;--usi_border:#31353b;--usi_text:#f1f3f4;--usi_muted:#aab1b9;--usi_media:#0f1113;}}body{margin:0;padding:24px;font-family:Helvetica,Arial,sans-serif;background:var(--usi_bg);color:var(--usi_text);}*{box-sizing:border-box;}.usi_mockup_root{max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}.usi_mockup_header,.usi_mockup_section{background:var(--usi_surface);border:1px solid var(--usi_border);border-radius:16px;padding:20px;}.usi_mockup_header h1,.usi_mockup_header p,.usi_mockup_section h2{margin:0 0 12px 0;}.usi_mockup_gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;}.usi_mockup_card{margin:0;margin-bottom: 3em;display:flex;flex-direction:column;gap:10px;}.usi_mockup_card a{position:relative; display: block; border: 10px solid var(--usi_muted); border-radius: 12px; overflow: hidden; background: var(--usi_surface); border-bottom: 40px solid var(--usi_muted); border-top: 40px solid var(--usi_muted); height: 600px;}.usi_mockup_card img{display:block;width:100%;object-fit:contain;position: absolute; bottom: 0;max-height: 100%; object-position: right;}.usi_mockup_card figcaption{font-size:14px;color:var(--usi_muted);word-break:break-word;}.usi_mockup_card strong{display:block;color:var(--usi_text);margin-bottom:4px;}</style></head><body><main class="usi_mockup_root"><section class=""><h1>Mockups</h1></section><section class="usi_mockup_section"><div class="usi_mockup_gallery">' +
-        entries
-            .map(function (entry) {
-            return '<figure class="usi_mockup_card"><a href="' + entry.href + '" target="_blank" rel="noreferrer"><img src="' + entry.href + '" alt="' + (0, string_1.escapeHtml)(entry.name) + '" /></a><figcaption><strong>' + (0, string_1.escapeHtml)(entry.name) + '</strong></figcaption></figure>'; //' + escapeHtml(entry.href) + '
-        })
-            .join('') +
-        '</div></section></main></body></html>');
-}
-},
-"render/devmode": function(require, module, exports) {
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.extractCampaignCss = extractCampaignCss;
-const string_1 = require("../utils/string");
-const DEVMODE_BASE_SELECTORS = {
-    '*': true,
-    html: true,
-    body: true,
-    '.usi_display': true,
-    '.usi_display *': true,
-    '.usi_quickide_css': true,
-    '#usi_container': true,
-    '#usi_display': true,
-    '.usi_shadow': true,
-    '#usi_content': true,
-    '#usi_background': true,
-    '#usi_background_img': true,
-    '#usi_close': true,
-    '#usi_close::before': true,
-    'button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus': true,
-    '.usi_flattened_semantic': true,
-    '.usi_sr_only': true,
-};
-function normalizeSelector(selector) {
-    return String(selector || '').replace(/\s+/g, ' ').trim();
-}
-function splitCssBlocks(source) {
-    const input = String(source || '');
-    const blocks = [];
-    let cursor = 0;
-    while (cursor < input.length) {
-        const start = input.indexOf('{', cursor);
-        if (start === -1)
-            break;
-        const selector = input.slice(cursor, start).trim();
-        let depth = 1;
-        let end = start + 1;
-        while (end < input.length && depth > 0) {
-            if (input.charAt(end) === '{')
-                depth += 1;
-            if (input.charAt(end) === '}')
-                depth -= 1;
-            end += 1;
-        }
-        const body = input.slice(start + 1, Math.max(start + 1, end - 1)).trim();
-        if (selector && body) {
-            blocks.push({ selector: selector, body: body });
-        }
-        cursor = end;
-    }
-    return blocks;
-}
-function extractCampaignCss(source) {
-    const blocks = splitCssBlocks(source);
-    const kept = blocks.filter(function (block) {
-        const selector = normalizeSelector(block.selector);
-        if (/^@media\b/i.test(selector))
-            return true;
-        return !DEVMODE_BASE_SELECTORS[selector];
-    });
-    return (0, string_1.formatCss)(kept
-        .map(function (block) {
-        return block.selector + ' {\n' + block.body + '\n}';
-    })
-        .join('\n\n'));
 }
 },
 "render/flattened": function(require, module, exports) {
@@ -2551,7 +2951,7 @@ const string_1 = require("../utils/string");
 const constants_1 = require("../constants");
 const css_1 = require("../utils/css");
 const index_1 = require("../analysis/index");
-const PRODUCT_PLACEHOLDER_IMAGE = 'https://placehold.co/600x400/EEE/31343C';
+const PRODUCT_PLACEHOLDER_IMAGE = "https://placehold.co/600x400/EEE/31343C";
 function hasInsertedComponent(root, componentId) {
     return (0, index_1.flattenTree)(root).some(function (node) {
         return !node.ignored && node.componentOverride === componentId;
@@ -2559,81 +2959,136 @@ function hasInsertedComponent(root, componentId) {
 }
 function buildPriceRuntimeSetup(includeSummary) {
     if (!includeSummary)
-        return '';
-    return ('try {\n' +
-        '  const subtotal_raw = usi_cookies.get("usi_subtotal");\n' +
-        '  const subtotal_num = Number(subtotal_raw);\n' +
-        '  const discount = (subtotal_num * 0.15).toFixed(2);\n' +
-        '  const new_price = (subtotal_num - Number(discount)).toFixed(2);\n' +
-        '  if (isNaN(subtotal_num) || isNaN(Number(discount)) || isNaN(Number(new_price))) {\n' +
-        '    throw new Error("Invalid price values");\n' +
-        '  }\n' +
-        '  usi_js.product = { subtotal: subtotal_raw, discount: discount, new_price: new_price };\n' +
-        '} catch (err) {\n' +
-        '  usi_commons.report_error(err);\n' +
-        '  usi_js.launch.enabled = false;\n' +
-        '  usi_js.launch.suppress = true;\n' +
-        '}\n\n');
+        return "";
+    return `try {
+	const subtotal_raw = usi_cookies.get("usi_subtotal");
+	const subtotal_num = Number(subtotal_raw);
+	const discount = (subtotal_num * 0.15).toFixed(2);
+	const new_price = (subtotal_num - Number(discount)).toFixed(2);
+
+	if (isNaN(subtotal_num) || isNaN(Number(discount)) || isNaN(Number(new_price))) {
+		throw new Error("Invalid price values");
+	}
+
+	usi_js.product = { subtotal: subtotal_raw, discount: discount, new_price: new_price };
+} catch (err) {
+	usi_commons.report_error(err);
+	usi_js.launch.enabled = false;
+	usi_js.launch.suppress = true;
+}
+
+`;
 }
 function componentDefinitionForNode(node) {
     if (node.componentOverride && constants_1.COMPONENT_BY_ID[node.componentOverride]) {
         return constants_1.COMPONENT_BY_ID[node.componentOverride];
     }
-    return constants_1.COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || 'other'];
+    return constants_1.COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || "other"];
 }
 function componentText(node, definition) {
-    const text = (0, index_1.collectText)(node) || node.text || node.name || '';
+    const text = (0, index_1.collectText)(node) || node.text || node.name || "";
     if (text)
         return text;
-    return definition && definition.render.fallbackText ? definition.render.fallbackText : '';
+    return definition && definition.render.fallbackText ? definition.render.fallbackText : "";
 }
 function renderExplicitComponentNode(node, hideVisibleText) {
     const definition = componentDefinitionForNode(node);
     if (!definition)
-        return '';
+        return "";
     const tag = definition.render.htmlTag;
     const className = definition.render.className;
     const text = componentText(node, definition);
     const kind = definition.render.kind;
-    if (kind === 'container') {
-        return '<' + tag + ' class="' + className + '"></' + tag + '>';
+    if (kind === "container") {
+        return `<${tag} class="${className}"></${tag}>`;
     }
-    if (kind === 'input') {
-        const placeholder = hideVisibleText ? '' : (0, string_1.escapeHtml)(text);
-        return '<label class="' + className + '"><span class="usi_field_label usi_sr_only">' + (0, string_1.escapeHtml)(node.name || definition.label) + '</span><input class="usi_field_input" type="' + (0, string_1.escapeHtml)(definition.render.inputType || 'text') + '" placeholder="' + placeholder + '" /></label>';
+    if (kind === "input") {
+        const placeholder = hideVisibleText ? "" : (0, string_1.escapeHtml)(text);
+        return `
+			<label class="${className}">
+				<span class="usi_field_label usi_sr_only">${(0, string_1.escapeHtml)(node.name || definition.label)}</span>
+				<input
+					class="usi_field_input"
+					type="${(0, string_1.escapeHtml)(definition.render.inputType || "text")}"
+					placeholder="${placeholder}"
+				/>
+			</label>
+		`.trim();
     }
-    if (kind === 'survey') {
-        const children = node.children.filter(function (child) { return !child.ignored && child.visible; });
+    if (kind === "survey") {
+        const children = node.children.filter(function (child) {
+            return !child.ignored && child.visible;
+        });
         const prompt = children[0] ? componentText(children[0]) : text;
         const options = (children.length > 1 ? children.slice(1) : [])
             .map(function (child) {
-            return '<button class="usi_survey_option" type="button">' + (0, string_1.escapeHtml)(componentText(child)) + '</button>';
+            return `
+						<button class="usi_survey_option" type="button">
+							${(0, string_1.escapeHtml)(componentText(child))}
+						</button>
+					`.trim();
         })
-            .join('') || '<button class="usi_survey_option" type="button">Option 1</button><button class="usi_survey_option" type="button">Option 2</button>';
-        return '<section class="' + className + '"><p class="usi_survey_prompt">' + (0, string_1.escapeHtml)(prompt) + '</p><div class="usi_survey_options">' + options + '</div></section>';
+            .join("") ||
+            `
+				<button class="usi_survey_option" type="button">Option 1</button>
+				<button class="usi_survey_option" type="button">Option 2</button>
+			`
+                .replace(/\s+/g, " ")
+                .trim();
+        return `
+			<section class="${className}">
+				<p class="usi_survey_prompt">${(0, string_1.escapeHtml)(prompt)}</p>
+				<div class="usi_survey_options">${options}</div>
+			</section>
+		`.trim();
     }
-    if (kind === 'coupon') {
-        const childrenText = node.children.map(function (child) { return componentText(child); }).filter(Boolean);
-        const code = childrenText[0] || text || definition.render.fallbackText || 'SAVE15';
-        const label = childrenText[1] || definition.render.buttonText || 'Copy Code';
-        return '<section class="' + className + '"><div class="usi_coupon_code">' + (0, string_1.escapeHtml)(code) + '</div><button class="usi_coupon_button" type="button">' + (0, string_1.escapeHtml)(label) + '</button></section>';
+    if (kind === "coupon") {
+        const childrenText = node.children
+            .map(function (child) {
+            return componentText(child);
+        })
+            .filter(Boolean);
+        const code = childrenText[0] || text || definition.render.fallbackText || "SAVE15";
+        const label = childrenText[1] || definition.render.buttonText || "Copy Code";
+        return `
+			<section class="${className}">
+				<div class="usi_coupon_code">${(0, string_1.escapeHtml)(code)}</div>
+				<button class="usi_coupon_button" type="button">${(0, string_1.escapeHtml)(label)}</button>
+			</section>
+		`.trim();
     }
-    if (kind === 'optin') {
-        return '<label class="' + className + '"><input class="usi_optin_input" type="checkbox" /><span class="usi_optin_label">' + (0, string_1.escapeHtml)(text) + '</span></label>';
+    if (kind === "optin") {
+        return `
+			<label class="${className}">
+				<input class="usi_optin_input" type="checkbox" />
+				<span class="usi_optin_label">${(0, string_1.escapeHtml)(text)}</span>
+			</label>
+		`.trim();
     }
-    if (kind === 'countdown')
-        return '<div class="' + className + '">' + (0, string_1.escapeHtml)(text || '09:59') + '</div>';
-    if (kind === 'progress')
-        return '<div class="' + className + '"><div class="usi_progress_fill"></div></div>';
-    if (kind === 'media') {
-        if (tag === 'hr')
-            return '<hr class="' + className + '" />';
-        return '<div class="' + className + '" aria-hidden="true"></div>';
+    if (kind === "countdown") {
+        return `<div class="${className}">${(0, string_1.escapeHtml)(text || "09:59")}</div>`;
     }
-    if (kind === 'button' || tag === 'button') {
-        return '<button class="' + className + '" type="button">' + (0, string_1.escapeHtml)(text || definition.render.buttonText || definition.label) + '</button>';
+    if (kind === "progress") {
+        return `
+			<div class="${className}">
+				<div class="usi_progress_fill"></div>
+			</div>
+		`.trim();
     }
-    return '<' + tag + ' class="' + className + '">' + (0, string_1.escapeHtml)(text) + '</' + tag + '>';
+    if (kind === "media") {
+        if (tag === "hr") {
+            return `<hr class="${className}" />`;
+        }
+        return `<div class="${className}" aria-hidden="true"></div>`;
+    }
+    if (kind === "button" || tag === "button") {
+        return `
+			<button class="${className}" type="button">
+				${(0, string_1.escapeHtml)(text || definition.render.buttonText || definition.label)}
+			</button>
+		`.trim();
+    }
+    return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
 }
 function renderExtraRegionNodes(root, region, excludedIds, hideVisibleText) {
     const rendered = [];
@@ -2641,10 +3096,9 @@ function renderExtraRegionNodes(root, region, excludedIds, hideVisibleText) {
         if (node.ignored || excludedIds.indexOf(node.id) !== -1)
             return;
         const definition = componentDefinitionForNode(node);
-        if (definition && definition.id === 'content_stack')
+        if (definition && definition.id === "content_stack")
             return;
-        const shouldRenderNode = !!definition &&
-            definition.render.region === region;
+        const shouldRenderNode = !!definition && definition.render.region === region;
         if (shouldRenderNode) {
             rendered.push(renderExplicitComponentNode(node, hideVisibleText || false));
             return;
@@ -2653,7 +3107,7 @@ function renderExtraRegionNodes(root, region, excludedIds, hideVisibleText) {
             walk(node.children[index]);
         }
     })(root);
-    return rendered.join('');
+    return rendered.join("");
 }
 function combineBounds(nodes) {
     const filtered = nodes.filter(Boolean);
@@ -2690,37 +3144,47 @@ function topLevelNodes(nodes, _root) {
 }
 function flattenedTextDeclarations(node, frameScale, extra) {
     if (!node)
-        return '';
+        return "";
     return (0, css_1.cssDeclarations)(Object.assign({
         color: node.style.color,
         opacity: node.style.opacity,
-        'font-family': node.style.fontFamily ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif' : undefined,
-        'font-style': node.style.fontStyle,
-        'font-size': node.style.fontSize ? (0, css_1.pxToEm)(node.style.fontSize, 16, frameScale) : undefined,
-        'font-weight': node.style.fontWeight,
-        'line-height': node.style.lineHeight ? (0, css_1.pxToEm)(node.style.lineHeight, 16, frameScale) : undefined,
-        'letter-spacing': node.style.letterSpacing ? (0, css_1.pxToEm)(node.style.letterSpacing, 16, frameScale) : undefined,
-        'text-align': node.style.textAlign,
-        'text-transform': (0, css_1.textTransformFromCase)(node.style.textCase),
+        "font-family": node.style.fontFamily
+            ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
+            : undefined,
+        "font-style": node.style.fontStyle,
+        "font-size": node.style.fontSize ? (0, css_1.pxToEm)(node.style.fontSize, 16, frameScale) : undefined,
+        "font-weight": node.style.fontWeight,
+        "line-height": node.style.lineHeight ? (0, css_1.pxToEm)(node.style.lineHeight, 16, frameScale) : undefined,
+        "letter-spacing": node.style.letterSpacing
+            ? (0, css_1.pxToEm)(node.style.letterSpacing, 16, frameScale)
+            : undefined,
+        "text-align": node.style.textAlign,
+        "text-transform": (0, css_1.textTransformFromCase)(node.style.textCase)
     }, extra || {}));
 }
 function flattenedBoxDeclarations(node, frameScale, extra) {
     if (!node)
         return (0, css_1.cssDeclarations)(extra || {});
     return (0, css_1.cssDeclarations)(Object.assign({
-        'background-color': node.style.background,
+        "background-color": node.style.background,
         color: node.style.color,
-        border: node.style.borderColor ? String(node.style.borderWidth || 1) + 'px solid ' + node.style.borderColor : undefined,
-        'border-radius': node.style.borderRadius != null ? String(node.style.borderRadius) + 'px' : undefined,
+        border: node.style.borderColor
+            ? String(node.style.borderWidth || 1) + "px solid " + node.style.borderColor
+            : undefined,
+        "border-radius": node.style.borderRadius != null ? String(node.style.borderRadius) + "px" : undefined,
         opacity: node.style.opacity,
-        'font-family': node.style.fontFamily ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif' : undefined,
-        'font-style': node.style.fontStyle,
-        'font-size': node.style.fontSize ? (0, css_1.pxToEm)(node.style.fontSize, 16, frameScale) : undefined,
-        'font-weight': node.style.fontWeight,
-        'line-height': node.style.lineHeight ? (0, css_1.pxToEm)(node.style.lineHeight, 16, frameScale) : undefined,
-        'letter-spacing': node.style.letterSpacing ? (0, css_1.pxToEm)(node.style.letterSpacing, 16, frameScale) : undefined,
-        'text-align': node.style.textAlign,
-        'text-transform': (0, css_1.textTransformFromCase)(node.style.textCase),
+        "font-family": node.style.fontFamily
+            ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
+            : undefined,
+        "font-style": node.style.fontStyle,
+        "font-size": node.style.fontSize ? (0, css_1.pxToEm)(node.style.fontSize, 16, frameScale) : undefined,
+        "font-weight": node.style.fontWeight,
+        "line-height": node.style.lineHeight ? (0, css_1.pxToEm)(node.style.lineHeight, 16, frameScale) : undefined,
+        "letter-spacing": node.style.letterSpacing
+            ? (0, css_1.pxToEm)(node.style.letterSpacing, 16, frameScale)
+            : undefined,
+        "text-align": node.style.textAlign,
+        "text-transform": (0, css_1.textTransformFromCase)(node.style.textCase)
     }, extra || {}));
 }
 function findDescendantRoleNode(root, role) {
@@ -2733,13 +3197,13 @@ function resolveSummaryTitle(summaryNode) {
         return undefined;
     for (let index = 0; index < summaryNode.children.length; index += 1) {
         const child = summaryNode.children[index];
-        const text = String(child.text || (0, index_1.collectText)(child) || '').trim();
+        const text = String(child.text || (0, index_1.collectText)(child) || "").trim();
         if (!text)
             continue;
         if (!/(subtotal|discount|total|\$)/i.test(text))
             return text;
     }
-    const ownText = String(summaryNode.text || '').trim();
+    const ownText = String(summaryNode.text || "").trim();
     if (ownText && !/(subtotal|discount|total|\$)/i.test(ownText))
         return ownText;
     return undefined;
@@ -2747,11 +3211,29 @@ function resolveSummaryTitle(summaryNode) {
 function buildSyntheticBounds(nodes) {
     if (!nodes.length)
         return undefined;
-    const left = Math.min.apply(null, nodes.map(function (node) { return node.bounds.x; }));
-    const top = Math.min.apply(null, nodes.map(function (node) { return node.bounds.y; }));
-    const right = Math.max.apply(null, nodes.map(function (node) { return node.bounds.x + node.bounds.width; }));
-    const bottom = Math.max.apply(null, nodes.map(function (node) { return node.bounds.y + node.bounds.height; }));
+    const left = Math.min.apply(null, nodes.map(function (node) {
+        return node.bounds.x;
+    }));
+    const top = Math.min.apply(null, nodes.map(function (node) {
+        return node.bounds.y;
+    }));
+    const right = Math.max.apply(null, nodes.map(function (node) {
+        return node.bounds.x + node.bounds.width;
+    }));
+    const bottom = Math.max.apply(null, nodes.map(function (node) {
+        return node.bounds.y + node.bounds.height;
+    }));
     return { x: left, y: top, width: right - left, height: bottom - top };
+}
+function formatFlattenedHtml(html) {
+    if (!html)
+        return "";
+    return (0, string_1.formatHtml)(html)
+        .split("\n")
+        .map(function (line) {
+        return line ? "\t" + line : line;
+    })
+        .join("\n");
 }
 function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const frameScale = 1;
@@ -2762,125 +3244,208 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const eyebrowNode = (0, index_1.findNormalizedNodeById)(root, analysis.eyebrowNodeId);
     const ctaNode = (0, index_1.findNormalizedNodeById)(root, analysis.primaryCtaNodeId);
     const productContainerNode = (0, index_1.findNormalizedNodeById)(root, analysis.productContainerNodeId);
-    const productCardNodes = analysis.productCardNodeIds.map(function (id) {
+    const productCardNodes = analysis.productCardNodeIds
+        .map(function (id) {
         return (0, index_1.findNormalizedNodeById)(root, id);
-    }).filter(Boolean);
+    })
+        .filter(Boolean);
     const summaryNode = (0, index_1.findNormalizedNodeById)(root, analysis.summaryNodeId);
-    const closeCandidates = (0, index_1.findNodesByRole)(root, 'close-button', 0.35);
-    const closeNode = closeCandidates
-        .slice()
-        .sort(function (a, b) {
+    const closeCandidates = (0, index_1.findNodesByRole)(root, "close-button", 0.35);
+    const closeNode = closeCandidates.slice().sort(function (a, b) {
         if (Math.abs(a.bounds.x - b.bounds.x) > 2)
             return b.bounds.x - a.bounds.x;
         if (Math.abs(a.bounds.y - b.bounds.y) > 2)
             return a.bounds.y - b.bounds.y;
-        return (a.bounds.width * a.bounds.height) - (b.bounds.width * b.bounds.height);
+        return a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height;
     })[0];
     const closeVisualNode = closeNode
         ? (0, index_1.flattenTree)(closeNode)
             .filter(function (node) {
-            return !!(0, index_1.collectText)(node).trim() || node.type === 'VECTOR' || node.type === 'ELLIPSE';
+            return !!(0, index_1.collectText)(node).trim() || node.type === "VECTOR" || node.type === "ELLIPSE";
         })
             .sort(function (a, b) {
             if (Math.abs(a.bounds.x - b.bounds.x) > 2)
                 return b.bounds.x - a.bounds.x;
             if (Math.abs(a.bounds.y - b.bounds.y) > 2)
                 return a.bounds.y - b.bounds.y;
-            return (a.bounds.width * a.bounds.height) - (b.bounds.width * b.bounds.height);
+            return a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height;
         })[0] || closeNode
         : undefined;
     const firstProductCard = productCardNodes[0];
-    const productImageNode = findDescendantRoleNode(firstProductCard, 'image') || findDescendantRoleNode(firstProductCard, 'product-image');
-    const productTitleNode = findDescendantRoleNode(firstProductCard, 'product-title');
-    const productPriceNode = findDescendantRoleNode(firstProductCard, 'product-price');
-    const productButtonNode = findDescendantRoleNode(firstProductCard, 'product-cta') || findDescendantRoleNode(firstProductCard, 'cta');
-    const summarySubtotalNode = findDescendantRoleNode(summaryNode, 'summary-subtotal');
-    const summaryDiscountNode = findDescendantRoleNode(summaryNode, 'summary-discount');
-    const summaryTotalNode = findDescendantRoleNode(summaryNode, 'summary-total');
+    const productImageNode = findDescendantRoleNode(firstProductCard, "image") || findDescendantRoleNode(firstProductCard, "product-image");
+    const productTitleNode = findDescendantRoleNode(firstProductCard, "product-title");
+    const productPriceNode = findDescendantRoleNode(firstProductCard, "product-price");
+    const productButtonNode = findDescendantRoleNode(firstProductCard, "product-cta") || findDescendantRoleNode(firstProductCard, "cta");
+    const summarySubtotalNode = findDescendantRoleNode(summaryNode, "summary-subtotal");
+    const summaryDiscountNode = findDescendantRoleNode(summaryNode, "summary-discount");
+    const summaryTotalNode = findDescendantRoleNode(summaryNode, "summary-total");
     const productBounds = productContainerNode ? productContainerNode.bounds : buildSyntheticBounds(productCardNodes);
     const mainBounds = combineBounds([eyebrowNode, headlineNode, subtextNode, ctaNode]);
-    const headlineText = analysis.schema.headline || (headlineNode ? (0, index_1.collectText)(headlineNode) : '');
+    const headlineText = analysis.schema.headline || (headlineNode ? (0, index_1.collectText)(headlineNode) : "");
     const eyebrowText = (() => {
-        const value = analysis.schema.eyebrow || (eyebrowNode ? (0, index_1.collectText)(eyebrowNode) : '');
+        const value = analysis.schema.eyebrow || (eyebrowNode ? (0, index_1.collectText)(eyebrowNode) : "");
         if (!value)
-            return '';
+            return "";
         if (/\$|subtotal|discount|total/i.test(value))
-            return '';
+            return "";
         return value;
     })();
-    const subtextText = analysis.schema.subtext || (subtextNode ? (0, index_1.collectText)(subtextNode) : '');
-    const ctaLabel = analysis.schema.primaryCta && analysis.schema.primaryCta.label ? analysis.schema.primaryCta.label : ctaNode ? (0, index_1.collectText)(ctaNode) : 'Redeem Now';
+    const subtextText = analysis.schema.subtext || (subtextNode ? (0, index_1.collectText)(subtextNode) : "");
+    const ctaLabel = analysis.schema.primaryCta && analysis.schema.primaryCta.label
+        ? analysis.schema.primaryCta.label
+        : ctaNode
+            ? (0, index_1.collectText)(ctaNode)
+            : "Redeem Now";
     const showEyebrowInVariant = hideVisibleText ? false : !!eyebrowText;
     const showHeadlineInVariant = hideVisibleText ? false : !!headlineText;
     const showSubtextInVariant = hideVisibleText ? false : !!subtextText;
-    const eyebrowClass = showEyebrowInVariant ? 'usi_eyebrow' : 'usi_eyebrow usi_sr_only';
-    const headlineClass = showHeadlineInVariant ? 'usi_headline' : 'usi_headline usi_sr_only';
-    const subtextClass = showSubtextInVariant ? 'usi_subtext' : 'usi_subtext usi_sr_only';
+    const eyebrowClass = showEyebrowInVariant ? "usi_eyebrow" : "usi_eyebrow usi_sr_only";
+    const headlineClass = showHeadlineInVariant ? "usi_headline" : "usi_headline usi_sr_only";
+    const subtextClass = showSubtextInVariant ? "usi_subtext" : "usi_subtext usi_sr_only";
     const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta);
-    const ctaInnerHtml = showCtaInVariant ? (0, string_1.escapeHtml)(ctaLabel) : '';
+    const ctaInnerHtml = showCtaInVariant ? (0, string_1.escapeHtml)(ctaLabel) : "";
     const summaryTitle = resolveSummaryTitle(summaryNode);
     const hasProducts = !!analysis.schema.products.length && !!productCardNodes.length && !!productBounds;
     const hasSummary = !!analysis.schema.summary && !!summaryNode;
-    const hasEmailInput = hasInsertedComponent(root, 'email_input');
-    const hasPhoneInput = hasInsertedComponent(root, 'phone_input');
-    const hasSurvey = hasInsertedComponent(root, 'survey_block');
-    const hasCoupon = hasInsertedComponent(root, 'copy_coupon');
-    const hasOptin = hasInsertedComponent(root, 'optin_component');
-    const hasCountdown = hasInsertedComponent(root, 'countdown_timer');
-    const hasProgress = hasInsertedComponent(root, 'progress_bar');
-    const hasMediaPanel = hasInsertedComponent(root, 'media_panel');
-    const hasSecondaryCta = hasInsertedComponent(root, 'no_thanks_button');
-    const hasDisclaimer = hasInsertedComponent(root, 'disclaimer_text');
+    const hasEmailInput = hasInsertedComponent(root, "email_input");
+    const hasPhoneInput = hasInsertedComponent(root, "phone_input");
+    const hasSurvey = hasInsertedComponent(root, "survey_block");
+    const hasCoupon = hasInsertedComponent(root, "copy_coupon");
+    const hasOptin = hasInsertedComponent(root, "optin_component");
+    const hasCountdown = hasInsertedComponent(root, "countdown_timer");
+    const hasProgress = hasInsertedComponent(root, "progress_bar");
+    const hasMediaPanel = hasInsertedComponent(root, "media_panel");
+    const hasSecondaryCta = hasInsertedComponent(root, "no_thanks_button");
+    const hasDisclaimer = hasInsertedComponent(root, "disclaimer_text");
     const productGap = productCardNodes.length > 1 && productBounds
         ? productCardNodes.slice(1).reduce(function (sum, card, index) {
             const previous = productCardNodes[index];
             return sum + Math.max(0, card.bounds.x - (previous.bounds.x + previous.bounds.width));
-        }, 0) / (productCardNodes.length - 1)
+        }, 0) /
+            (productCardNodes.length - 1)
         : 0;
     const gridColumns = Math.max(1, Math.min(productCardNodes.length || analysis.schema.products.length || 1, 3));
     const previewProductHtml = analysis.schema.products.length
-        ? analysis.schema.products.map(function (product, index) {
-            const fallbackTitle = (0, string_1.escapeHtml)(product.title || 'Product Name');
-            const fallbackPrice = (0, string_1.escapeHtml)(product.price || '$XX.XX');
-            const fallbackButton = (0, string_1.escapeHtml)(product.cta || 'View item');
-            return ('<article class="usi_product_card usi_product usi_product' + (index + 1) + '">' +
-                '<div class="usi_product_image"><img src="' + PRODUCT_PLACEHOLDER_IMAGE + '" alt="' + fallbackTitle + '" /></div>' +
-                '<div class="usi_product_body"><h3 class="usi_product_title">' + fallbackTitle + '</h3><p class="usi_product_price">' + fallbackPrice + '</p><button class="usi_product_cta" type="button">' + fallbackButton + '</button></div>' +
-                '</article>');
-        }).join('')
-        : '';
+        ? analysis.schema.products
+            .map(function (product, index) {
+            const fallbackTitle = (0, string_1.escapeHtml)(product.title || "Product Name");
+            const fallbackSubtitle = (0, string_1.escapeHtml)(product.subtitle || "");
+            const fallbackPrice = (0, string_1.escapeHtml)(product.price || "$XX.XX");
+            const fallbackButton = (0, string_1.escapeHtml)(product.cta || "View item");
+            return `
+						<article class="usi_product_card usi_product usi_product${index + 1}">
+							<div class="usi_product_image">
+								<img src="${PRODUCT_PLACEHOLDER_IMAGE}" alt="${fallbackTitle}" />
+							</div>
+							<div class="usi_product_body">
+								<h3 class="usi_product_title">${fallbackTitle}</h3>
+								${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
+								<p class="usi_product_price">${fallbackPrice}</p>
+								<button class="usi_product_cta" type="button">${fallbackButton}</button>
+							</div>
+						</article>
+					`.trim();
+        })
+            .join("")
+        : "";
     const runtimeProductHtml = analysis.schema.products.length
-        ? analysis.schema.products.map(function (product, index) {
-            const fallbackTitle = (0, string_1.escapeHtml)(product.title || 'Product Name');
-            const fallbackPrice = (0, string_1.escapeHtml)(product.price || '$XX.XX');
-            const fallbackButton = (0, string_1.escapeHtml)(product.cta || 'View item');
-            return ('<article class="usi_product_card usi_product usi_product' + (index + 1) + '">' +
-                '<div class="usi_product_image"><img src="${usi_cookies.get(\'usi_prod_image_' + (index + 1) + '\') || \'' + PRODUCT_PLACEHOLDER_IMAGE + '\'}" alt="${usi_js.escape_quotes(usi_cookies.get(\'usi_prod_name_' + (index + 1) + '\') || \'' + fallbackTitle.replace(/'/g, '&#39;') + '\')}" /></div>' +
-                '<div class="usi_product_body"><h3 class="usi_product_title">${usi_js.escape_quotes(usi_cookies.get(\'usi_prod_name_' + (index + 1) + '\') || \'' + fallbackTitle.replace(/'/g, '&#39;') + '\')}</h3><p class="usi_product_price">' + fallbackPrice + '</p><button class="usi_product_cta" type="button">' + fallbackButton + '</button></div>' +
-                '</article>');
-        }).join('')
-        : '';
+        ? analysis.schema.products
+            .map(function (product, index) {
+            const fallbackTitle = (0, string_1.escapeHtml)(product.title || "Product Name");
+            const fallbackSubtitle = (0, string_1.escapeHtml)(product.subtitle || "");
+            const fallbackPrice = (0, string_1.escapeHtml)(product.price || "$XX.XX");
+            const fallbackButton = (0, string_1.escapeHtml)(product.cta || "View item");
+            const fallbackTitleForRuntime = fallbackTitle.replace(/'/g, "&#39;");
+            return `
+						<article class="usi_product_card usi_product usi_product${index + 1}">
+							<div class="usi_product_image">
+								<img
+									src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
+									alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}"
+								/>
+							</div>
+							<div class="usi_product_body">
+								<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}</h3>
+								${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
+								<p class="usi_product_price">${fallbackPrice}</p>
+								<button class="usi_product_cta" type="button">${fallbackButton}</button>
+							</div>
+						</article>
+					`.trim();
+        })
+            .join("")
+        : "";
     const previewSummaryHtml = hasSummary
-        ? '<section class="usi_summary" aria-label="Cart summary">' + (summaryTitle ? '<h2 class="usi_summary_title">' + (0, string_1.escapeHtml)(summaryTitle) + '</h2>' : '') + '<div class="usi_summary_row usi_price"><span class="usi_label">Subtotal:</span><strong class="usi_value">$XX.XX</strong></div><div class="usi_summary_row usi_discount"><span class="usi_label">Discount:</span><strong class="usi_value">- $XX.XX</strong></div><div class="usi_summary_row usi_new_price"><span class="usi_label">Total:</span><strong class="usi_value">$XX.XX</strong></div></section>'
-        : '';
+        ? `
+				<section class="usi_summary" aria-label="Cart summary">
+					${summaryTitle ? `<h2 class="usi_summary_title">${(0, string_1.escapeHtml)(summaryTitle)}</h2>` : ""}
+					<div class="usi_summary_row usi_price">
+						<span class="usi_label">Subtotal:</span>
+						<strong class="usi_value">$XX.XX</strong>
+					</div>
+					<div class="usi_summary_row usi_discount">
+						<span class="usi_label">Discount:</span>
+						<strong class="usi_value">- $XX.XX</strong>
+					</div>
+					<div class="usi_summary_row usi_new_price">
+						<span class="usi_label">Total:</span>
+						<strong class="usi_value">$XX.XX</strong>
+					</div>
+				</section>
+			`.trim()
+        : "";
     const runtimeSummaryHtml = hasSummary
-        ? '<section class="usi_summary" aria-label="Cart summary">' + (summaryTitle ? '<h2 class="usi_summary_title">' + (0, string_1.escapeHtml)(summaryTitle) + '</h2>' : '') + '<div class="usi_summary_row usi_price"><span class="usi_label">Subtotal:</span><strong class="usi_value">$${usi_js.product.subtotal}</strong></div><div class="usi_summary_row usi_discount"><span class="usi_label">Discount:</span><strong class="usi_value">- $${usi_js.product.discount}</strong></div><div class="usi_summary_row usi_new_price"><span class="usi_label">Total:</span><strong class="usi_value">$${usi_js.product.new_price}</strong></div></section>'
-        : '';
-    const flattenedExcludedIds = [analysis.eyebrowNodeId, analysis.headlineNodeId, analysis.subtextNodeId, analysis.primaryCtaNodeId, analysis.summaryNodeId].concat(analysis.productCardNodeIds).filter(Boolean);
-    const flattenedExtraMainHtml = renderExtraRegionNodes(root, 'main', flattenedExcludedIds, hideVisibleText);
-    const flattenedExtraAsideHtml = renderExtraRegionNodes(root, 'aside', flattenedExcludedIds, hideVisibleText);
-    const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, 'utility', flattenedExcludedIds, hideVisibleText);
+        ? `
+				<section class="usi_summary" aria-label="Cart summary">
+					${summaryTitle ? `<h2 class="usi_summary_title">${(0, string_1.escapeHtml)(summaryTitle)}</h2>` : ""}
+					<div class="usi_summary_row usi_price">
+						<span class="usi_label">Subtotal:</span>
+						<strong class="usi_value">$\${usi_js.product.subtotal}</strong>
+					</div>
+					<div class="usi_summary_row usi_discount">
+						<span class="usi_label">Discount:</span>
+						<strong class="usi_value">- $\${usi_js.product.discount}</strong>
+					</div>
+					<div class="usi_summary_row usi_new_price">
+						<span class="usi_label">Total:</span>
+						<strong class="usi_value">$\${usi_js.product.new_price}</strong>
+					</div>
+				</section>
+			`.trim()
+        : "";
+    const flattenedExcludedIds = [
+        analysis.eyebrowNodeId,
+        analysis.headlineNodeId,
+        analysis.subtextNodeId,
+        analysis.primaryCtaNodeId,
+        analysis.summaryNodeId
+    ]
+        .concat(analysis.productCardNodeIds)
+        .filter(Boolean);
+    const flattenedExtraMainHtml = renderExtraRegionNodes(root, "main", flattenedExcludedIds, hideVisibleText);
+    const flattenedExtraAsideHtml = renderExtraRegionNodes(root, "aside", flattenedExcludedIds, hideVisibleText);
+    const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, "utility", flattenedExcludedIds, hideVisibleText);
     // Explicitly render missing components to ensure they appear in flattened HTML
-    const progressBarNodes = (0, index_1.findNodesByRole)(root, 'progress', 0.35);
-    const countdownNodes = (0, index_1.findNodesByRole)(root, 'countdown', 0.35);
-    const surveyNodes = topLevelNodes((0, index_1.findNodesByRole)(root, 'survey', 0.35), root);
-    const emailInputNodes = (0, index_1.findNodesByRole)(root, 'email-input', 0.35);
-    const phoneInputNodes = (0, index_1.findNodesByRole)(root, 'phone-input', 0.35);
-    const copyCouponNodes = topLevelNodes((0, index_1.findNodesByRole)(root, 'copy-coupon', 0.35), root);
-    const noThanksNodes = (0, index_1.findNodesByRole)(root, 'secondary-cta', 0.35);
-    const optinNodes = topLevelNodes((0, index_1.findNodesByRole)(root, 'optin', 0.35), root);
-    const mediaPanelNodes = (0, index_1.findNodesByRole)(root, 'image', 0.35);
-    const disclaimerNodes = (0, index_1.findNodesByRole)(root, 'disclaimer', 0.35);
+    const progressBarNodes = (0, index_1.findNodesByRole)(root, "progress", 0.35);
+    const countdownNodes = (0, index_1.findNodesByRole)(root, "countdown", 0.35);
+    const surveyNodes = topLevelNodes((0, index_1.findNodesByRole)(root, "survey", 0.35), root);
+    const emailInputNodes = (0, index_1.findNodesByRole)(root, "email-input", 0.35);
+    const phoneInputNodes = (0, index_1.findNodesByRole)(root, "phone-input", 0.35);
+    const copyCouponNodes = topLevelNodes((0, index_1.findNodesByRole)(root, "copy-coupon", 0.35), root);
+    const noThanksNodes = (0, index_1.findNodesByRole)(root, "secondary-cta", 0.35);
+    const optinNodes = topLevelNodes((0, index_1.findNodesByRole)(root, "optin", 0.35), root);
+    const mediaPanelNodes = (0, index_1.findNodesByRole)(root, "image", 0.35);
+    const disclaimerNodes = (0, index_1.findNodesByRole)(root, "disclaimer", 0.35);
+    const dividerNodes = (0, index_1.findNodesByRole)(root, "divider", 0.35);
+    const productSubtitleNodes = (function () {
+        const subtitles = [];
+        productCardNodes.forEach(function (card) {
+            const subtitle = findDescendantRoleNode(card, "product-subtitle");
+            if (subtitle)
+                subtitles.push(subtitle);
+        });
+        return subtitles;
+    })();
     const allExtraComponentNodes = [
         ...progressBarNodes,
         ...countdownNodes,
@@ -2892,75 +3457,644 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         ...noThanksNodes,
         ...mediaPanelNodes,
         ...disclaimerNodes,
+        ...dividerNodes,
+        ...productSubtitleNodes
     ];
-    const extraComponentsHtml = allExtraComponentNodes.map(node => renderExplicitComponentNode(node, hideVisibleText)).join('');
+    const extraComponentsHtml = allExtraComponentNodes
+        .map((node) => renderExplicitComponentNode(node, hideVisibleText))
+        .join("");
     // Generate positioning CSS for extra components
-    const extraComponentsCss = allExtraComponentNodes.map(function (node) {
+    const extraComponentsCss = allExtraComponentNodes
+        .map(function (node) {
         const definition = componentDefinitionForNode(node);
         if (!definition)
-            return '';
+            return "";
         const className = definition.render.className;
-        return '.' + className + ' {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width) + ';\n  top: ' + (0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height) + ';\n  width: ' + (0, css_1.toPercent)(node.bounds.width, root.bounds.width) + ';\n  ' + flattenedBoxDeclarations(node, frameScale) + '\n}\n';
-    }).join('');
-    const previewContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + (0, string_1.escapeHtml)(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + (0, string_1.escapeHtml)(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + (0, string_1.escapeHtml)(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + (0, string_1.escapeHtml)(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + extraComponentsHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + previewProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + previewSummaryHtml;
-    const runtimeContentHtml = (closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : '') + '<section class="usi_main">' + (eyebrowText ? '<p class="' + eyebrowClass + '">' + (0, string_1.escapeHtml)(eyebrowText) + '</p>' : '') + (headlineText ? '<h1 class="' + headlineClass + '">' + (0, string_1.escapeHtml)(headlineText) + '</h1>' : '') + (subtextText ? '<p class="' + subtextClass + '">' + (0, string_1.escapeHtml)(subtextText) + '</p>' : '') + (showCtaInVariant ? '<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="' + (0, string_1.escapeHtml)(ctaLabel) + '">' + ctaInnerHtml + '</button>' : '') + flattenedExtraMainHtml + flattenedExtraUtilityHtml + extraComponentsHtml + '</section>' + ((hasProducts || flattenedExtraAsideHtml) ? '<section class="usi_aside">' + (hasProducts ? '<section class="usi_products usi_products_grid">' + runtimeProductHtml + '</section>' : '') + flattenedExtraAsideHtml + '</section>' : '') + runtimeSummaryHtml;
+        return `
+.${className} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+`;
+    })
+        .join("");
+    const previewContentHtml = `
+		${closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : ""}
+		<section class="usi_main">
+			${eyebrowText ? `<p class="${eyebrowClass}">${(0, string_1.escapeHtml)(eyebrowText)}</p>` : ""}
+			${headlineText ? `<h1 class="${headlineClass}">${(0, string_1.escapeHtml)(headlineText)}</h1>` : ""}
+			${subtextText ? `<p class="${subtextClass}">${(0, string_1.escapeHtml)(subtextText)}</p>` : ""}
+			${showCtaInVariant
+        ? `<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="${(0, string_1.escapeHtml)(ctaLabel)}">${ctaInnerHtml}</button>`
+        : ""}
+			${flattenedExtraMainHtml}
+			${flattenedExtraUtilityHtml}
+			${extraComponentsHtml}
+		</section>
+		${hasProducts || flattenedExtraAsideHtml
+        ? `
+						<section class="usi_aside">
+							${hasProducts ? `<section class="usi_products usi_products_grid">${previewProductHtml}</section>` : ""}
+							${flattenedExtraAsideHtml}
+						</section>
+					`.trim()
+        : ""}
+		${previewSummaryHtml}
+	`.trim();
+    const runtimeContentHtml = `
+		${closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : ""}
+		<section class="usi_main">
+			${eyebrowText ? `<p class="${eyebrowClass}">${(0, string_1.escapeHtml)(eyebrowText)}</p>` : ""}
+			${headlineText ? `<h1 class="${headlineClass}">${(0, string_1.escapeHtml)(headlineText)}</h1>` : ""}
+			${subtextText ? `<p class="${subtextClass}">${(0, string_1.escapeHtml)(subtextText)}</p>` : ""}
+			${showCtaInVariant
+        ? `<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="${(0, string_1.escapeHtml)(ctaLabel)}">${ctaInnerHtml}</button>`
+        : ""}
+			${flattenedExtraMainHtml}
+			${flattenedExtraUtilityHtml}
+			${extraComponentsHtml}
+		</section>
+		${hasProducts || flattenedExtraAsideHtml
+        ? `
+						<section class="usi_aside">
+							${hasProducts ? `<section class="usi_products usi_products_grid">${runtimeProductHtml}</section>` : ""}
+							${flattenedExtraAsideHtml}
+						</section>
+					`.trim()
+        : ""}
+		${runtimeSummaryHtml}
+	`.trim();
     //const formattedPreviewContentHtml = previewContentHtml;
     const formattedRuntimeContentHtml = runtimeContentHtml;
-    const html = '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Legacy flattened export</title><link rel="stylesheet" href="css/' + (hideVisibleText ? 'flattened_text_baked.css' : 'flattened_live_text.css') + '" /></head><body><div id="usi_container"><div id="usi_display" role="alertdialog" aria-label="' + (0, string_1.escapeHtml)(headlineText || 'Preview') + '" aria-modal="true" class="usi_display usi_show_css usi_shadow" style="width:' + scaledRootWidth + 'px;height:' + scaledRootHeight + 'px;"><div id="usi_content">' + previewContentHtml + '</div><div id="usi_background"><img src="' + (0, string_1.escapeHtml)(imageFileName) + '" aria-hidden="true" alt="' + (0, string_1.escapeHtml)(headlineText || 'Preview') + '" id="usi_background_img" style="width:100%;height:100%;" /></div></div></div></body></html>';
-    const productCardCss = productCardNodes.map(function (card, index) {
+    const html = `
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Preview</title>
+		<style>
+		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}.usi_display * {padding:0 0 0 0;margin:0 0 0 0;color:#000000;font-weight:normal;font-size:12pt;text-decoration:none;line-height:12pt;box-shadow: none;border: none; outline: none;text-align: left;font-family: Helvetica, Arial, sans-serif;float:none;} .usi_quickide_css {display:none;visibility:hidden;}#usi_close { position:absolute;left:85%;top:0px;width:15%;height:15%;z-index:2000000300;cursor:pointer;border:none;background:none;margin:0;padding:0; } 
+button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { background:none;border:none;cursor:pointer; } #usi_content { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000200; } #usi_background { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000100; } #usi_page { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000150; } .usi_sr_only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+		</style>
+		<link
+			rel="stylesheet"
+			href="css/${hideVisibleText ? "flattened_text_baked.css" : "flattened_live_text.css"}"
+		/>
+	</head>
+	<body>
+		<div id="usi_container">
+			<div
+				id="usi_display"
+				role="alertdialog"
+				aria-label="${(0, string_1.escapeHtml)(headlineText || "Preview")}"
+				aria-modal="true"
+				class="usi_display usi_show_css usi_shadow"
+				style="width:${scaledRootWidth}px;height:${scaledRootHeight}px;"
+			>
+				<div id="usi_content">${previewContentHtml}</div>
+				<div id="usi_background">
+					<img
+						src="${(0, string_1.escapeHtml)(imageFileName)}"
+						aria-hidden="true"
+						alt="${(0, string_1.escapeHtml)(headlineText || "Preview")}"
+						id="usi_background_img"
+						style="width:100%;height:100%;"
+					/>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
+`.trim();
+    const productCardCss = productCardNodes
+        .map(function (card, index) {
         const imageNode = (0, index_1.findNormalizedNodeById)(card, (0, index_1.findImageNodeId)(card));
-        const imageRule = imageNode ? '.usi_product' + (index + 1) + ' .usi_product_image {\n  width: 100%;\n  height: ' + (0, css_1.toPercent)(imageNode.bounds.height, card.bounds.height) + ';\n  margin-left: 0;\n  margin-top: ' + (0, css_1.toPercent)(imageNode.bounds.y - card.bounds.y, card.bounds.height) + ';\n}\n' : '';
-        return '.usi_product' + (index + 1) + ' {\n  width: 100%;\n  max-width: 100%;\n  min-width: 0;\n}\n' + imageRule;
-    }).join('');
+        const imageRule = imageNode
+            ? `
+.usi_product${index + 1} .usi_product_image {
+	width: 100%;
+	height: ${(0, css_1.toPercent)(imageNode.bounds.height, card.bounds.height)};
+	margin-left: 0;
+	margin-top: ${(0, css_1.toPercent)(imageNode.bounds.y - card.bounds.y, card.bounds.height)};
+}
+`
+            : "";
+        return `
+.usi_product${index + 1} {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+${imageRule}
+`;
+    })
+        .join("");
     const componentCss = [
-        (hasEmailInput || hasPhoneInput) ? '.usi_field {\n  position: absolute;\n  left: ' + (emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (emailInputNodes[0] || phoneInputNodes[0] ? flattenedBoxDeclarations(emailInputNodes[0] || phoneInputNodes[0], frameScale) : '') + '\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
-        hasSurvey ? '.usi_survey {\n  position: absolute;\n  left: ' + (surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  ' + (surveyNodes[0] ? flattenedBoxDeclarations(surveyNodes[0], frameScale) : '') + '\n}\n.usi_survey_options {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_survey_option {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
-        hasCoupon ? '.usi_coupon {\n  position: absolute;\n  left: ' + (copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.75em;\n  align-items: center;\n  ' + (copyCouponNodes[0] ? flattenedBoxDeclarations(copyCouponNodes[0], frameScale) : '') + '\n}\n.usi_coupon_code {\n  padding: 0.75em 1em;\n  border: 1px solid #222;\n  background: #fff;\n  font-weight: 700;\n}\n.usi_coupon_button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n  ' + (copyCouponNodes[0] && copyCouponNodes[0].children[1] ? flattenedBoxDeclarations(copyCouponNodes[0].children[1], frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center' }) : '') + '\n}\n' : '',
-        hasOptin ? '.usi_optin {\n  position: absolute;\n  left: ' + (optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  gap: 0.625em;\n  align-items: center;\n  ' + (optinNodes[0] ? flattenedBoxDeclarations(optinNodes[0], frameScale) : '') + '\n}\n.usi_optin_input {\n  appearance: none;\n  -webkit-appearance: none;\n  width: 1.125em;\n  height: 1.125em;\n  border: 1px solid currentColor;\n  background: #fff;\n  flex: 0 0 auto;\n}\n.usi_optin_label {\n  display: inline-block;\n}\n' : '',
-        hasCountdown ? '.usi_countdown {\n  position: absolute;\n  left: ' + (countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.width, root.bounds.width) : 'auto') + ';\n  display: inline-flex;\n  padding: 0.625em 0.875em;\n  ' + (countdownNodes[0] ? flattenedBoxDeclarations(countdownNodes[0], frameScale) : 'background: #1f1f1f; color: #fff;') + '\n  font-weight: 700;\n}\n' : '',
-        hasProgress ? '.usi_progress {\n  position: absolute;\n  left: ' + (progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  height: 0.75em;\n  ' + (progressBarNodes[0] ? flattenedBoxDeclarations(progressBarNodes[0], frameScale) : 'background: #ddd;') + '\n  border-radius: 999px;\n  overflow: hidden;\n}\n.usi_progress_fill {\n  width: 55%;\n  height: 100%;\n  background: #222;\n}\n' : '',
-        hasMediaPanel ? '.usi_media_panel {\n  position: absolute;\n  left: ' + (mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  height: ' + (mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.height, root.bounds.height) : '8em') + ';\n  ' + (mediaPanelNodes[0] ? flattenedBoxDeclarations(mediaPanelNodes[0], frameScale) : 'background: #d9d9d9;') + '\n}\n' : '',
-        hasSecondaryCta ? '.usi_secondary_cta {\n  position: absolute;\n  left: ' + (noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.width, root.bounds.width) : 'auto') + ';\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n  ' + (noThanksNodes[0] ? flattenedBoxDeclarations(noThanksNodes[0], frameScale) : '') + '\n}\n' : '',
-        hasDisclaimer ? '.usi_disclaimer {\n  position: absolute;\n  left: ' + (disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.width, root.bounds.width) : 'auto') + ';\n  margin: 0;\n  font-size: 0.875em;\n  line-height: 1.4;\n  ' + (disclaimerNodes[0] ? flattenedTextDeclarations(disclaimerNodes[0], frameScale) : 'color: #666;') + '\n}\n' : '',
-    ].join('');
+        hasEmailInput || hasPhoneInput
+            ? `
+.usi_field {
+	position: absolute;
+	left: ${emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.width, root.bounds.width) : "100%"};
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	${emailInputNodes[0] || phoneInputNodes[0] ? flattenedBoxDeclarations(emailInputNodes[0] || phoneInputNodes[0], frameScale) : ""}
+}
+
+.usi_field_input {
+	width: 100%;
+	padding: 0.875em 1em;
+	border: 1px solid #d0d0d0;
+	background: #fff;
+	color: #111;
+	${emailInputNodes[0] || phoneInputNodes[0] ? (function () {
+                const inputNode = emailInputNodes[0] || phoneInputNodes[0];
+                return inputNode.style.borderRadius != null ? "border-radius: " + String(inputNode.style.borderRadius) + "px;" : "";
+            })() : ""}
+}
+`
+            : "",
+        hasSurvey
+            ? `
+.usi_survey {
+	position: absolute;
+	left: ${surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.width, root.bounds.width) : "100%"};
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	${surveyNodes[0] ? flattenedBoxDeclarations(surveyNodes[0], frameScale) : ""}
+}
+
+.usi_survey_options {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+.usi_survey_option {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	cursor: pointer;
+}
+`
+            : "",
+        hasCoupon
+            ? `
+.usi_coupon {
+	position: absolute;
+	left: ${copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.width, root.bounds.width) : "100%"};
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75em;
+	align-items: center;
+	${copyCouponNodes[0] ? flattenedBoxDeclarations(copyCouponNodes[0], frameScale) : ""}
+}
+
+.usi_coupon_code {
+	padding: 0.75em 1em;
+	border: 1px solid #222;
+	background: #fff;
+	font-weight: 700;
+}
+
+.usi_coupon_button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	cursor: pointer;
+	${copyCouponNodes[0] && copyCouponNodes[0].children[1]
+                ? flattenedBoxDeclarations(copyCouponNodes[0].children[1], frameScale, {
+                    display: "inline-flex",
+                    "align-items": "center",
+                    "justify-content": "center"
+                })
+                : ""}
+}
+`
+            : "",
+        hasOptin
+            ? `
+.usi_optin {
+	position: absolute;
+	left: ${optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.width, root.bounds.width) : "100%"};
+	display: flex;
+	gap: 0.625em;
+	align-items: center;
+	${optinNodes[0] ? flattenedBoxDeclarations(optinNodes[0], frameScale) : ""}
+}
+
+.usi_optin_input {
+	appearance: none;
+	-webkit-appearance: none;
+	width: 1.125em;
+	height: 1.125em;
+	border: 1px solid currentColor;
+	background: #fff;
+	flex: 0 0 auto;
+}
+
+.usi_optin_label {
+	display: inline-block;
+}
+`
+            : "",
+        hasCountdown
+            ? `
+.usi_countdown {
+	position: absolute;
+	left: ${countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.width, root.bounds.width) : "auto"};
+	display: inline-flex;
+	padding: 0.625em 0.875em;
+	${countdownNodes[0] ? flattenedBoxDeclarations(countdownNodes[0], frameScale) : "background: #1f1f1f; color: #fff;"}
+	font-weight: 700;
+}
+`
+            : "",
+        hasProgress
+            ? `
+.usi_progress {
+	position: absolute;
+	left: ${progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.width, root.bounds.width) : "100%"};
+	height: 0.75em;
+	${progressBarNodes[0] ? flattenedBoxDeclarations(progressBarNodes[0], frameScale) : "background: #ddd;"}
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+.usi_progress_fill {
+	width: 55%;
+	height: 100%;
+	background: #222;
+}
+`
+            : "",
+        hasMediaPanel
+            ? `
+.usi_media_panel {
+	position: absolute;
+	left: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.width, root.bounds.width) : "100%"};
+	height: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.height, root.bounds.height) : "8em"};
+	${mediaPanelNodes[0] ? flattenedBoxDeclarations(mediaPanelNodes[0], frameScale) : "background: #d9d9d9;"}
+}
+`
+            : "",
+        hasSecondaryCta
+            ? `
+.usi_secondary_cta {
+	position: absolute;
+	left: ${noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.width, root.bounds.width) : "auto"};
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	cursor: pointer;
+	${noThanksNodes[0] ? flattenedBoxDeclarations(noThanksNodes[0], frameScale) : ""}
+}
+`
+            : "",
+        hasDisclaimer
+            ? `
+.usi_disclaimer {
+	position: absolute;
+	left: ${disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.width, root.bounds.width) : "auto"};
+	margin: 0;
+	font-size: 0.875em;
+	line-height: 1.4;
+	${disclaimerNodes[0] ? flattenedTextDeclarations(disclaimerNodes[0], frameScale) : "color: #666;"}
+}
+`
+            : "",
+        dividerNodes.length > 0
+            ? `
+.usi_divider {
+	position: absolute;
+	left: ${dividerNodes[0] ? (0, css_1.toPercent)(dividerNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${dividerNodes[0] ? (0, css_1.toPercent)(dividerNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${dividerNodes[0] ? (0, css_1.toPercent)(dividerNodes[0].bounds.width, root.bounds.width) : "100%"};
+	margin: 0;
+	${dividerNodes[0] ? flattenedBoxDeclarations(dividerNodes[0], frameScale) : "border: 1px solid #ddd;"}
+}
+`
+            : ""
+    ].join("");
     const textRegionCss = [
-        headlineText && headlineNode && mainBounds ? '.usi_headline {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(headlineNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(headlineNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(headlineNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(headlineNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
-        eyebrowText && eyebrowNode && mainBounds ? '.usi_eyebrow {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(eyebrowNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(eyebrowNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
-        subtextText && subtextNode && mainBounds ? '.usi_subtext {\n  position: absolute;\n  left: ' + (0, css_1.toPercent)(subtextNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + (0, css_1.toPercent)(subtextNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + (0, css_1.toPercent)(subtextNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(subtextNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
-    ].join('');
-    const css = '* { box-sizing: border-box; }\nhtml { font-size: 16px; }\nbody { margin: 0; background: rgba(0, 0, 0, 0.9); font-family: Inter, Arial, sans-serif; }\n' +
-        '.usi_display { left:50%; margin-left:-' + String(scaledRootWidth / 2) + 'px; top:0px; width:' + scaledRootWidth + 'px; height:' + scaledRootHeight + 'px; }\n' +
-        '.usi_display * { padding:0; margin:0; color:#000000; font-weight:normal; font-size:12pt; text-decoration:none; line-height:1.2; box-shadow:none; border:none; outline:none; text-align:left; font-family: Helvetica, Arial, sans-serif; float:none; }\n' +
-        '.usi_quickide_css { display:none; visibility:hidden; }\n#usi_container {\n  width: 100%;\n}\n#usi_display {\n  position: relative;\n  display: block;\n  left: 50%;\n  margin-left: -' + String(scaledRootWidth / 2) + 'px;\n  top: 0px;\n  width: ' + scaledRootWidth + 'px;\n  height: ' + scaledRootHeight + 'px;\n  font-size: 16px;\n}\n.usi_shadow {\n  box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.33);\n}\n#usi_content {\n  position: absolute;\n  left: 0px;\n  top: 0px;\n  width: 100%;\n  height: 100%;\n  z-index: 2000000200;\n}\n#usi_background {\n  position: absolute;\n  left: 0px;\n  top: 0px;\n  width: 100%;\n  height: 100%;\n  z-index: 2000000100;\n}\n#usi_background_img {\n  display: block;\n  width: 100%;\n  height: 100%;\n}\n' +
-        '#usi_close { position:absolute;left:' + (closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.x - root.bounds.x, root.bounds.width) : '95%') + ';top:' + (closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.y - root.bounds.y, root.bounds.height) : '2%') + ';width:' + (closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.width, root.bounds.width) : '3%') + ';height:' + (closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.height, root.bounds.height) : '3%') + ';z-index:2000000300;cursor:pointer;padding:0;margin:0;display:block;overflow:hidden;text-indent:-9999px;' + (flattenedBoxDeclarations(closeVisualNode || closeNode, frameScale, { background: 'none', border: 'none' }) || 'background:none;border:none;') + '; }\n' +
-        '#usi_close::before { content:"×"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-indent:0; ' + (flattenedTextDeclarations(closeVisualNode || closeNode, frameScale, { background: 'transparent', border: 'none', 'text-align': 'center', 'line-height': '1' }) || 'background:transparent;border:none;text-align:center;line-height:1;') + '; }\n' +
-        'button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { cursor:pointer; }\n' +
-        '.usi_main {\n  position: absolute;\n  left: ' + (hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.x - root.bounds.x, root.bounds.width) : '0%') : '0%') + ';\n  top: ' + (hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.y - root.bounds.y, root.bounds.height) : '0%') : '0%') + ';\n  width: ' + (hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.width, root.bounds.width) : '100%') : '100%') + ';\n  height: ' + (!hasProducts && !hasSummary ? '100%' : (mainBounds ? (0, css_1.toPercent)(mainBounds.height, root.bounds.height) : '100%')) + ';\n}\n' +
-        textRegionCss +
-        (hasProducts ? '.usi_products {\n  position: absolute;\n  left: ' + (productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : '100%') + ';\n  min-height: ' + (productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : '0%') + ';\n  display: grid;\n  grid-template-columns: repeat(' + ((productBounds && productBounds.width < productBounds.height * 0.9) ? 1 : gridColumns) + ', minmax(0, 1fr));\n  gap: ' + (productBounds && productGap ? (0, css_1.toPercent)(productGap, productBounds.width) : '2%') + ';\n  align-items: start;\n}\n.usi_product {\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  padding: 0.9em;\n  min-width: 0;\n  ' + (flattenedBoxDeclarations(firstProductCard, frameScale, { width: '100%', 'max-width': '100%', 'min-width': '0' }) || 'width: 100%; max-width: 100%;') + '\n}\n.usi_product_image {\n  position: relative;\n  display: block;\n  width: 100%;\n  overflow: hidden;\n  ' + (flattenedBoxDeclarations(productImageNode, frameScale, { width: '100%' }) || 'width: 100%;') + '\n}\n.usi_product_image img {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n}\n.usi_product_body {\n  display: flex;\n  flex-direction: column;\n  gap: 0.35em;\n  min-width: 0;\n}\n.usi_product_title {\n  margin: 0;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(productTitleNode, frameScale, { 'white-space': 'pre-wrap', 'background-color': 'transparent', border: 'none' }) || 'font-weight: 700;') + '\n}\n.usi_product_price {\n  margin: 0;\n  ' + (flattenedTextDeclarations(productPriceNode, frameScale) || '') + '\n}\n.usi_product_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  ' + (flattenedBoxDeclarations(productButtonNode, frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center', color: '#ffffff' }) || 'border: 1px solid currentColor; background: transparent; color:#ffffff;') + '\n}\n' + productCardCss : '') +
-        (hasSummary ? '.usi_summary {\n  position: absolute;\n  left: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : '59%') + ';\n  width: ' + (summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : '76%') + ';\n  padding: 1em;\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (flattenedBoxDeclarations(summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_summary_title {\n  margin: 0 0 0.5em;\n  white-space: pre-wrap;\n  ' + (flattenedTextDeclarations(summaryNode, frameScale, { 'font-size': '1em', 'font-weight': 700, 'white-space': 'pre-wrap' }) || 'font-weight: 700; font-size: 1em;') + '\n}\n.usi_summary_row {\n  display: grid;\n  grid-template-columns: 1fr auto;\n  gap: 1em;\n  align-items: start;\n  font-size: 1em;\n}\n.usi_price {\n  ' + (flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_discount {\n  ' + (flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_new_price {\n  ' + (flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { 'font-size': '1em' }) || 'font-size: 1em;') + '\n}\n.usi_label, .usi_value {\n  font-size: 1em;\n}\n.usi_new_price .usi_value, .usi_discount .usi_value, .usi_new_price strong, .usi_discount strong {\n  font-weight: 700;\n}\n' : '') +
-        componentCss +
-        extraComponentsCss +
-        '.usi_submitbutton {\n  position: absolute;\n  left: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.x - root.bounds.x, root.bounds.width) : '12%') + ';\n  top: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.y - root.bounds.y, root.bounds.height) : '77%') + ';\n  width: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.width, root.bounds.width) : '76%') + ';\n  min-height: ' + (ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.height, root.bounds.height) : '15.5%') + ';\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n' + (flattenedBoxDeclarations(ctaNode, frameScale, { display: 'flex', 'align-items': 'center', 'justify-content': 'center', 'background-color': ctaNode && ctaNode.style.background ? ctaNode.style.background : '#1f1f1f', color: ctaNode && ctaNode.style.color ? ctaNode.style.color : '#ffffff', 'text-align': ctaNode && ctaNode.style.textAlign ? ctaNode.style.textAlign : 'center' })) + '}\n.usi_sr_only {\n  position: absolute !important;\n  width: 1px !important;\n  height: 1px !important;\n  padding: 0 !important;\n  margin: -1px !important;\n  overflow: hidden !important;\n  clip: rect(0, 0, 0, 0) !important;\n  white-space: nowrap !important;\n  border: 0 !important;\n}\n';
-    const js = buildPriceRuntimeSetup(hasSummary) + 'usi_js.click_cta = () => {\n  try {\n    usi_js.deep_link();\n  } catch (err) {\n    usi_commons.report_error(err);\n  }\n};\n\nusi_js.display_vars.p1_html = `\n' + (0, string_1.escapeTemplateString)(formatFlattenedHtml(formattedRuntimeContentHtml)) + '\n`;\n';
+        headlineText && headlineNode && mainBounds
+            ? `
+.usi_headline {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(headlineNode.bounds.x - mainBounds.x, mainBounds.width)};
+	top: ${(0, css_1.toPercent)(headlineNode.bounds.y - mainBounds.y, mainBounds.height)};
+	width: ${(0, css_1.toPercent)(headlineNode.bounds.width, mainBounds.width)};
+	${flattenedTextDeclarations(headlineNode, frameScale, { "white-space": "pre-wrap" })}
+}
+`
+            : "",
+        eyebrowText && eyebrowNode && mainBounds
+            ? `
+.usi_eyebrow {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width)};
+	top: ${(0, css_1.toPercent)(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height)};
+	width: ${(0, css_1.toPercent)(eyebrowNode.bounds.width, mainBounds.width)};
+	${flattenedTextDeclarations(eyebrowNode, frameScale, { "white-space": "pre-wrap" })}
+}
+`
+            : "",
+        subtextText && subtextNode && mainBounds
+            ? `
+.usi_subtext {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(subtextNode.bounds.x - mainBounds.x, mainBounds.width)};
+	top: ${(0, css_1.toPercent)(subtextNode.bounds.y - mainBounds.y, mainBounds.height)};
+	width: ${(0, css_1.toPercent)(subtextNode.bounds.width, mainBounds.width)};
+	${flattenedTextDeclarations(subtextNode, frameScale, { "white-space": "pre-wrap" })}
+}
+`
+            : ""
+    ].join("");
+    const css = `
+.usi_display * {
+	font-size: 1em;
+	line-height: 1.2;
+	box-sizing: border-box;
+	color: inherit;
+	font-family: inherit;
+}
+
+#usi_display {
+	position: relative;
+	display: block;
+	left: 50%;
+	margin-left: -${String(scaledRootWidth / 2)}px;
+	top: 0px;
+	width: ${scaledRootWidth}px;
+	height: ${scaledRootHeight}px;
+	font-size: 16px;
+	color: #000;
+	font-family: inherit;
+	${root.layout && root.layout.padding ? "padding: " + root.layout.padding.top + "px " + root.layout.padding.right + "px " + root.layout.padding.bottom + "px " + root.layout.padding.left + "px;" : ""}
+	${root.style.borderRadius != null ? "border-radius: " + String(root.style.borderRadius) + "px;" : ""}
+}
+
+#usi_close {
+	position: absolute;
+	left: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.x - root.bounds.x, root.bounds.width) : "95%"};
+	top: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.y - root.bounds.y, root.bounds.height) : "2%"};
+	width: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.width, root.bounds.width) : "3%"};
+	height: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.height, root.bounds.height) : "3%"};
+	z-index: 2000000300;
+	cursor: pointer;
+	padding: 0;
+	margin: 0;
+	display: block;
+	overflow: hidden;
+	text-indent: -9999px;
+	${flattenedBoxDeclarations(closeVisualNode || closeNode, frameScale, { background: "none", border: "none" }) || "background:none;border:none;"}
+}
+
+#usi_close::before {
+	content: "×";
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-indent: 0;
+	${flattenedTextDeclarations(closeVisualNode || closeNode, frameScale, {
+        background: "transparent",
+        border: "none",
+        "text-align": "center",
+        "line-height": "1"
+    }) || "background:transparent;border:none;text-align:center;line-height:1;"}
+}
+
+button#usi_close,
+button#usi_close:hover,
+button#usi_close:active,
+button#usi_close:focus {
+	cursor: pointer;
+}
+
+.usi_main {
+	position: absolute;
+	left: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.x - root.bounds.x, root.bounds.width) : "0%") : "0%"};
+	top: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.y - root.bounds.y, root.bounds.height) : "0%") : "0%"};
+	width: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.width, root.bounds.width) : "100%") : "100%"};
+	height: ${!hasProducts && !hasSummary ? "100%" : mainBounds ? (0, css_1.toPercent)(mainBounds.height, root.bounds.height) : "100%"};
+}
+
+${textRegionCss}
+${hasProducts
+        ? `
+.usi_products {
+	position: absolute;
+	left: ${productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : "100%"};
+	min-height: ${productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : "0%"};
+	display: grid;
+	grid-template-columns: repeat(${productBounds && productBounds.width < productBounds.height * 0.9 ? 1 : gridColumns}, minmax(0, 1fr));
+	gap: ${productBounds && productGap ? (0, css_1.toPercent)(productGap, productBounds.width) : "2%"};
+	align-items: start;
+}
+
+.usi_product {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	padding: 0.9em;
+	min-width: 0;
+	${flattenedBoxDeclarations(firstProductCard, frameScale, {
+            width: "100%",
+            "max-width": "100%",
+            "min-width": "0"
+        }) || "width: 100%; max-width: 100%;"}
+}
+
+.usi_product_image {
+	position: relative;
+	display: block;
+	width: 100%;
+	overflow: hidden;
+	${flattenedBoxDeclarations(productImageNode, frameScale, { width: "100%" }) || "width: 100%;"}
+}
+
+.usi_product_image img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.usi_product_body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35em;
+	min-width: 0;
+}
+
+.usi_product_subtitle {
+	margin: 0;
+	font-size: 0.9em;
+	${productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
+}
+
+.usi_product_title {
+	margin: 0;
+	white-space: pre-wrap;
+	${flattenedTextDeclarations(productTitleNode, frameScale, {
+            "white-space": "pre-wrap",
+            "background-color": "transparent",
+            border: "none"
+        }) || "font-weight: 700;"}
+}
+
+.usi_product_price {
+	margin: 0;
+	${flattenedTextDeclarations(productPriceNode, frameScale) || ""}
+}
+
+.usi_product_cta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	${flattenedBoxDeclarations(productButtonNode, frameScale, {
+            display: "inline-flex",
+            "align-items": "center",
+            "justify-content": "center",
+            color: "#ffffff"
+        }) || "border: 1px solid currentColor; background: transparent; color:#ffffff;"}
+}
+
+${productCardCss}
+`
+        : ""}
+${hasSummary
+        ? `
+.usi_summary {
+	position: absolute;
+	left: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
+	top: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : "59%"};
+	width: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : "76%"};
+	padding: 1em;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	${flattenedBoxDeclarations(summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_summary_title {
+	margin: 0 0 0.5em;
+	white-space: pre-wrap;
+	${flattenedTextDeclarations(summaryNode, frameScale, {
+            "font-size": "1em",
+            "font-weight": 700,
+            "white-space": "pre-wrap"
+        }) || "font-weight: 700; font-size: 1em;"}
+}
+
+.usi_summary_row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 1em;
+	align-items: start;
+	font-size: 1em;
+}
+
+.usi_price {
+	${flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_discount {
+	${flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_new_price {
+	${flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_label,
+.usi_value {
+	font-size: 1em;
+}
+
+.usi_new_price .usi_value,
+.usi_discount .usi_value,
+.usi_new_price strong,
+.usi_discount strong {
+	font-weight: 700;
+}
+`
+        : ""}
+${componentCss}
+${extraComponentsCss}
+.usi_submitbutton {
+	position: absolute;
+	left: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
+	top: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.y - root.bounds.y, root.bounds.height) : "77%"};
+	width: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.width, root.bounds.width) : "76%"};
+	min-height: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.height, root.bounds.height) : "15.5%"};
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	${flattenedBoxDeclarations(ctaNode, frameScale, {
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        "background-color": ctaNode && ctaNode.style.background ? ctaNode.style.background : "#1f1f1f",
+        color: ctaNode && ctaNode.style.color ? ctaNode.style.color : "#ffffff",
+        "text-align": ctaNode && ctaNode.style.textAlign ? ctaNode.style.textAlign : "center"
+    })}
+}
+`.trim();
+    const js = `${buildPriceRuntimeSetup(hasSummary)}usi_js.click_cta = () => {
+	try {
+		usi_js.deep_link();
+	} catch (err) {
+		usi_commons.report_error(err);
+	}
+};
+
+usi_js.display_vars.p1_html = \`
+${(0, string_1.escapeTemplateString)(formatFlattenedHtml(formattedRuntimeContentHtml))}
+\`;
+`;
     return {
         html: html,
         css: css,
         imageFileName: imageFileName,
         js: js,
         contentHtml: previewContentHtml,
-        runtimeContentHtml: runtimeContentHtml,
+        runtimeContentHtml: runtimeContentHtml
     };
-}
-function formatFlattenedHtml(html) {
-    if (!html)
-        return '';
-    return (0, string_1.formatHtml)(html)
-        .split('\n')
-        .map(function (line) {
-        return line ? '\t' + line : line;
-    })
-        .join('\n');
 }
 function buildUsiJsFile(pages) {
     const needsPriceRuntime = pages.some(function (page) {
@@ -2968,20 +4102,21 @@ function buildUsiJsFile(pages) {
     });
     const assignments = pages
         .map(function (page) {
-        return ('usi_js.display_vars.' + page.key + '_html = `\n' +
-            (0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.runtimeContentHtml || page.variant.contentHtml)) +
-            '\n`;\n');
+        return `usi_js.display_vars.${page.key}_html = \`
+${(0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.runtimeContentHtml || page.variant.contentHtml))}
+\`;
+`;
     })
-        .join('\n');
-    return (buildPriceRuntimeSetup(needsPriceRuntime) +
-        'usi_js.click_cta = () => {\n' +
-        '  try {\n' +
-        '    usi_js.deep_link();\n' +
-        '  } catch (err) {\n' +
-        '    usi_commons.report_error(err);\n' +
-        '  }\n' +
-        '};\n\n' +
-        assignments);
+        .join("\n");
+    return `${buildPriceRuntimeSetup(needsPriceRuntime)}usi_js.click_cta = () => {
+	try {
+		usi_js.deep_link();
+	} catch (err) {
+		usi_commons.report_error(err);
+	}
+};
+
+${assignments}`;
 }
 },
 "utils/css": function(require, module, exports) {
