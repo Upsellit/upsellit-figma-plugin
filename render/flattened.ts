@@ -79,7 +79,7 @@ function renderExplicitComponentNode(node: NormalizedNode, hideVisibleText: bool
 
   if (kind === 'input') {
     const placeholder = hideVisibleText ? '' : escapeHtml(text);
-    return '<label class="' + className + '"><span class="usi_field_label">' + escapeHtml(node.name || definition.label) + '</span><input class="usi_field_input" type="' + escapeHtml(definition.render.inputType || 'text') + '" placeholder="' + placeholder + '" /></label>';
+    return '<label class="' + className + '"><span class="usi_field_label usi_sr_only">' + escapeHtml(node.name || definition.label) + '</span><input class="usi_field_input" type="' + escapeHtml(definition.render.inputType || 'text') + '" placeholder="' + placeholder + '" /></label>';
   }
   if (kind === 'survey') {
     const children = node.children.filter(function (child) { return !child.ignored && child.visible; });
@@ -165,7 +165,7 @@ function nodeContains(parent: NormalizedNode, child: NormalizedNode): boolean {
   return false;
 }
 
-function topLevelNodes(nodes: NormalizedNode[], root: NormalizedNode): NormalizedNode[] {
+function topLevelNodes(nodes: NormalizedNode[], _root: NormalizedNode): NormalizedNode[] {
   return nodes.filter(function (node) {
     return !nodes.some(function (other) {
       return other !== node && nodeContains(other, node);
@@ -365,19 +365,23 @@ export function renderFlattenedHtml(
   const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, 'utility', flattenedExcludedIds, hideVisibleText);
   // Explicitly render missing components to ensure they appear in flattened HTML
   const progressBarNodes = findNodesByRole(root, 'progress', 0.35);
+  const countdownNodes = findNodesByRole(root, 'countdown', 0.35);
   const surveyNodes = topLevelNodes(findNodesByRole(root, 'survey', 0.35), root);
   const emailInputNodes = findNodesByRole(root, 'email-input', 0.35);
   const phoneInputNodes = findNodesByRole(root, 'phone-input', 0.35);
-  const copyCouponNodes = findNodesByRole(root, 'copy-coupon', 0.35);
+  const copyCouponNodes = topLevelNodes(findNodesByRole(root, 'copy-coupon', 0.35), root);
   const noThanksNodes = findNodesByRole(root, 'secondary-cta', 0.35);
+  const optinNodes = topLevelNodes(findNodesByRole(root, 'optin', 0.35), root);
   const mediaPanelNodes = findNodesByRole(root, 'image', 0.35);
   const disclaimerNodes = findNodesByRole(root, 'disclaimer', 0.35);
   const allExtraComponentNodes = [
     ...progressBarNodes,
+    ...countdownNodes,
     ...surveyNodes,
     ...emailInputNodes,
     ...phoneInputNodes,
     ...copyCouponNodes,
+    ...optinNodes,
     ...noThanksNodes,
     ...mediaPanelNodes,
     ...disclaimerNodes,
@@ -401,22 +405,22 @@ export function renderFlattenedHtml(
     return '.usi_product' + (index + 1) + ' {\n  width: 100%;\n  max-width: 100%;\n  min-width: 0;\n}\n' + imageRule;
   }).join('');
   const componentCss = [
-    (hasEmailInput || hasPhoneInput) ? '.usi_field {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
-    hasSurvey ? '.usi_survey {\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n}\n.usi_survey_options {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_survey_option {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
-    hasCoupon ? '.usi_coupon {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.75em;\n  align-items: center;\n}\n.usi_coupon_code {\n  padding: 0.75em 1em;\n  border: 1px solid #222;\n  background: #fff;\n  font-weight: 700;\n}\n.usi_coupon_button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
-    hasOptin ? '.usi_optin {\n  display: flex;\n  gap: 0.625em;\n  align-items: center;\n}\n.usi_optin_input {\n  appearance: none;\n  -webkit-appearance: none;\n  width: 1.125em;\n  height: 1.125em;\n  border: 1px solid currentColor;\n  background: #fff;\n  flex: 0 0 auto;\n}\n.usi_optin_label {\n  display: inline-block;\n}\n' : '',
-    hasCountdown ? '.usi_countdown {\n  display: inline-flex;\n  padding: 0.625em 0.875em;\n  background: #1f1f1f;\n  color: #fff;\n  font-weight: 700;\n}\n' : '',
-    hasProgress ? '.usi_progress {\n  width: 100%;\n  height: 0.75em;\n  background: #ddd;\n  border-radius: 999px;\n  overflow: hidden;\n}\n.usi_progress_fill {\n  width: 55%;\n  height: 100%;\n  background: #222;\n}\n' : '',
-    hasMediaPanel ? '.usi_media_panel {\n  width: 100%;\n  min-height: 8em;\n  background: #d9d9d9;\n}\n' : '',
-    hasSecondaryCta ? '.usi_secondary_cta {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
-      hasDisclaimer ? '.usi_disclaimer {\n  margin: 0;\n  font-size: 0.875em;\n  color: #666;\n  line-height: 1.4;\n}\n' : '',
+    (hasEmailInput || hasPhoneInput) ? '.usi_field {\n  position: absolute;\n  left: ' + (emailInputNodes[0] || phoneInputNodes[0] ? toPercent((emailInputNodes[0] || phoneInputNodes[0]).bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (emailInputNodes[0] || phoneInputNodes[0] ? toPercent((emailInputNodes[0] || phoneInputNodes[0]).bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (emailInputNodes[0] || phoneInputNodes[0] ? toPercent((emailInputNodes[0] || phoneInputNodes[0]).bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n  ' + (emailInputNodes[0] || phoneInputNodes[0] ? flattenedBoxDeclarations(emailInputNodes[0] || phoneInputNodes[0], frameScale) : '') + '\n}\n.usi_field_input {\n  width: 100%;\n  padding: 0.875em 1em;\n  border: 1px solid #d0d0d0;\n  background: #fff;\n  color: #111;\n}\n' : '',
+    hasSurvey ? '.usi_survey {\n  position: absolute;\n  left: ' + (surveyNodes[0] ? toPercent(surveyNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (surveyNodes[0] ? toPercent(surveyNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (surveyNodes[0] ? toPercent(surveyNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  flex-direction: column;\n  gap: 0.75em;\n  ' + (surveyNodes[0] ? flattenedBoxDeclarations(surveyNodes[0], frameScale) : '') + '\n}\n.usi_survey_options {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5em;\n}\n.usi_survey_option {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n}\n' : '',
+    hasCoupon ? '.usi_coupon {\n  position: absolute;\n  left: ' + (copyCouponNodes[0] ? toPercent(copyCouponNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (copyCouponNodes[0] ? toPercent(copyCouponNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (copyCouponNodes[0] ? toPercent(copyCouponNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  flex-wrap: wrap;\n  gap: 0.75em;\n  align-items: center;\n  ' + (copyCouponNodes[0] ? flattenedBoxDeclarations(copyCouponNodes[0], frameScale) : '') + '\n}\n.usi_coupon_code {\n  padding: 0.75em 1em;\n  border: 1px solid #222;\n  background: #fff;\n  font-weight: 700;\n}\n.usi_coupon_button {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n  ' + (copyCouponNodes[0] && copyCouponNodes[0].children[1] ? flattenedBoxDeclarations(copyCouponNodes[0].children[1], frameScale, { display: 'inline-flex', 'align-items': 'center', 'justify-content': 'center' }) : '') + '\n}\n' : '',
+    hasOptin ? '.usi_optin {\n  position: absolute;\n  left: ' + (optinNodes[0] ? toPercent(optinNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (optinNodes[0] ? toPercent(optinNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (optinNodes[0] ? toPercent(optinNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  display: flex;\n  gap: 0.625em;\n  align-items: center;\n  ' + (optinNodes[0] ? flattenedBoxDeclarations(optinNodes[0], frameScale) : '') + '\n}\n.usi_optin_input {\n  appearance: none;\n  -webkit-appearance: none;\n  width: 1.125em;\n  height: 1.125em;\n  border: 1px solid currentColor;\n  background: #fff;\n  flex: 0 0 auto;\n}\n.usi_optin_label {\n  display: inline-block;\n}\n' : '',
+    hasCountdown ? '.usi_countdown {\n  position: absolute;\n  left: ' + (countdownNodes[0] ? toPercent(countdownNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (countdownNodes[0] ? toPercent(countdownNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (countdownNodes[0] ? toPercent(countdownNodes[0].bounds.width, root.bounds.width) : 'auto') + ';\n  display: inline-flex;\n  padding: 0.625em 0.875em;\n  ' + (countdownNodes[0] ? flattenedBoxDeclarations(countdownNodes[0], frameScale) : 'background: #1f1f1f; color: #fff;') + '\n  font-weight: 700;\n}\n' : '',
+    hasProgress ? '.usi_progress {\n  position: absolute;\n  left: ' + (progressBarNodes[0] ? toPercent(progressBarNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (progressBarNodes[0] ? toPercent(progressBarNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (progressBarNodes[0] ? toPercent(progressBarNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  height: 0.75em;\n  ' + (progressBarNodes[0] ? flattenedBoxDeclarations(progressBarNodes[0], frameScale) : 'background: #ddd;') + '\n  border-radius: 999px;\n  overflow: hidden;\n}\n.usi_progress_fill {\n  width: 55%;\n  height: 100%;\n  background: #222;\n}\n' : '',
+    hasMediaPanel ? '.usi_media_panel {\n  position: absolute;\n  left: ' + (mediaPanelNodes[0] ? toPercent(mediaPanelNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (mediaPanelNodes[0] ? toPercent(mediaPanelNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (mediaPanelNodes[0] ? toPercent(mediaPanelNodes[0].bounds.width, root.bounds.width) : '100%') + ';\n  height: ' + (mediaPanelNodes[0] ? toPercent(mediaPanelNodes[0].bounds.height, root.bounds.height) : '8em') + ';\n  ' + (mediaPanelNodes[0] ? flattenedBoxDeclarations(mediaPanelNodes[0], frameScale) : 'background: #d9d9d9;') + '\n}\n' : '',
+    hasSecondaryCta ? '.usi_secondary_cta {\n  position: absolute;\n  left: ' + (noThanksNodes[0] ? toPercent(noThanksNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (noThanksNodes[0] ? toPercent(noThanksNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (noThanksNodes[0] ? toPercent(noThanksNodes[0].bounds.width, root.bounds.width) : 'auto') + ';\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0.75em 1em;\n  cursor: pointer;\n  ' + (noThanksNodes[0] ? flattenedBoxDeclarations(noThanksNodes[0], frameScale) : '') + '\n}\n' : '',
+      hasDisclaimer ? '.usi_disclaimer {\n  position: absolute;\n  left: ' + (disclaimerNodes[0] ? toPercent(disclaimerNodes[0].bounds.x - root.bounds.x, root.bounds.width) : '0%') + ';\n  top: ' + (disclaimerNodes[0] ? toPercent(disclaimerNodes[0].bounds.y - root.bounds.y, root.bounds.height) : '0%') + ';\n  width: ' + (disclaimerNodes[0] ? toPercent(disclaimerNodes[0].bounds.width, root.bounds.width) : 'auto') + ';\n  margin: 0;\n  font-size: 0.875em;\n  line-height: 1.4;\n  ' + (disclaimerNodes[0] ? flattenedTextDeclarations(disclaimerNodes[0], frameScale) : 'color: #666;') + '\n}\n' : '',
 ].join('');
   const textRegionCss = [
     headlineText && headlineNode && mainBounds ? '.usi_headline {\n  position: absolute;\n  left: ' + toPercent(headlineNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(headlineNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(headlineNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(headlineNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
     eyebrowText && eyebrowNode && mainBounds ? '.usi_eyebrow {\n  position: absolute;\n  left: ' + toPercent(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(eyebrowNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(eyebrowNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
     subtextText && subtextNode && mainBounds ? '.usi_subtext {\n  position: absolute;\n  left: ' + toPercent(subtextNode.bounds.x - mainBounds.x, mainBounds.width) + ';\n  top: ' + toPercent(subtextNode.bounds.y - mainBounds.y, mainBounds.height) + ';\n  width: ' + toPercent(subtextNode.bounds.width, mainBounds.width) + ';\n  white-space: pre-wrap;\n  ' + flattenedTextDeclarations(subtextNode, frameScale, { 'white-space': 'pre-wrap' }) + '\n}\n' : '',
   ].join('');
-  const css = '* { box-sizing: border-box; }\nhtml { font-size: 16px; }\nbody { margin: 0; background: #efefef; font-family: Inter, Arial, sans-serif; }\n' +
+  const css = '* { box-sizing: border-box; }\nhtml { font-size: 16px; }\nbody { margin: 0; background: rgba(0, 0, 0, 0.9); font-family: Inter, Arial, sans-serif; }\n' +
     '.usi_display { left:50%; margin-left:-' + String(scaledRootWidth / 2) + 'px; top:0px; width:' + scaledRootWidth + 'px; height:' + scaledRootHeight + 'px; }\n' +
     '.usi_display * { padding:0; margin:0; color:#000000; font-weight:normal; font-size:12pt; text-decoration:none; line-height:1.2; box-shadow:none; border:none; outline:none; text-align:left; font-family: Helvetica, Arial, sans-serif; float:none; }\n' +
     '.usi_quickide_css { display:none; visibility:hidden; }\n#usi_container {\n  width: 100%;\n}\n#usi_display {\n  position: relative;\n  display: block;\n  left: 50%;\n  margin-left: -' + String(scaledRootWidth / 2) + 'px;\n  top: 0px;\n  width: ' + scaledRootWidth + 'px;\n  height: ' + scaledRootHeight + 'px;\n  font-size: 16px;\n}\n.usi_shadow {\n  box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.33);\n}\n#usi_content {\n  position: absolute;\n  left: 0px;\n  top: 0px;\n  width: 100%;\n  height: 100%;\n  z-index: 2000000200;\n}\n#usi_background {\n  position: absolute;\n  left: 0px;\n  top: 0px;\n  width: 100%;\n  height: 100%;\n  z-index: 2000000100;\n}\n#usi_background_img {\n  display: block;\n  width: 100%;\n  height: 100%;\n}\n' +
