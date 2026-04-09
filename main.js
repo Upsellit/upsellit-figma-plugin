@@ -6,7 +6,7 @@ var modules = {
 Object.defineProperty(exports, "__esModule", { value: true });
 const constants_1 = require("./constants");
 const index_1 = require("./figma/index");
-const index_2 = require("./packaging/index");
+const packaging_1 = require("./render/packaging");
 figma.showUI(__html__, {
     width: 440,
     height: 880,
@@ -48,7 +48,7 @@ figma.ui.onmessage = async function (msg) {
             return;
         }
         try {
-            const payload = await (0, index_2.buildExport)(roots);
+            const payload = await (0, packaging_1.buildExport)(roots);
             figma.ui.postMessage({
                 type: 'package-ready',
                 payload: payload,
@@ -2158,7 +2158,7 @@ function uniqueIds(ids) {
     return Array.from(new Set(ids.filter(Boolean)));
 }
 },
-"packaging/index": function(require, module, exports) {
+"render/packaging": function(require, module, exports) {
 "use strict";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -2166,7 +2166,7 @@ exports.buildExport = buildExport;
 const analyze_1 = require("../figma/analyze");
 const tree_1 = require("../utils/tree");
 const index_1 = require("../figma/index");
-const index_2 = require("../render/index");
+const index_2 = require("./index");
 const string_1 = require("../utils/string");
 async function buildExportFilesForNode(rootNode, filePrefix) {
     const exportBaseName = (0, index_1.buildExportBaseName)(rootNode);
@@ -2972,6 +2972,9 @@ function hasInsertedComponent(root, componentId) {
         return !node.ignored && node.componentOverride === componentId;
     });
 }
+function htmlToCssClassName(cn) {
+    return cn.split(" ").map(s => "." + s).join("");
+}
 function buildPriceRuntimeSetup(includeSummary) {
     if (!includeSummary)
         return "";
@@ -3006,103 +3009,1157 @@ function componentText(node, definition) {
         return text;
     return definition && definition.render.fallbackText ? definition.render.fallbackText : "";
 }
+const COMPONENT_RENDERERS = {
+    container: {
+        renderHtml: (_node, definition) => {
+            if (!definition)
+                return "";
+            const tag = definition.render.htmlTag;
+            const className = definition.render.className;
+            return `<${tag} class="${className}"></${tag}>`;
+        },
+        renderCss: () => "",
+        shouldRender: () => true
+    },
+    text: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            const tag = definition.render.htmlTag;
+            const className = definition.render.className;
+            return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
+        },
+        renderCss: () => "",
+        shouldRender: () => true
+    },
+    button: {
+        renderHtml: (node, definition) => {
+            if (!definition)
+                return "";
+            const text = node ? componentText(node, definition) : "";
+            const className = definition.render.className;
+            return `<button class="${className}" type="button">${(0, string_1.escapeHtml)(text || definition.render.buttonText || definition.label)}</button>`;
+        },
+        renderCss: () => "",
+        shouldRender: () => true
+    },
+    media: {
+        renderHtml: (_node, definition) => {
+            if (!definition)
+                return "";
+            const tag = definition.render.htmlTag;
+            const className = definition.render.className;
+            if (tag === "hr") {
+                return `<hr class="${className}" />`;
+            }
+            return `<div class="${className}" aria-hidden="true"></div>`;
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	margin: 0;
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: () => true
+    },
+    input: {
+        renderHtml: (node, definition, hideVisibleText) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            const placeholder = hideVisibleText ? "" : (0, string_1.escapeHtml)(text);
+            return `
+			<label class="${definition.render.className}">
+				<span class="usi_field_label usi_sr_only">${(0, string_1.escapeHtml)(node.name || definition.label)}</span>
+				<input class="usi_field_input" type="${(0, string_1.escapeHtml)(definition.render.inputType || "text")}" placeholder="${placeholder}" />
+			</label>
+		`.trim();
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                const className = definition.render.className;
+                return `
+${htmlToCssClassName(className)} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+${htmlToCssClassName(className)} .usi_field_input {
+	width: 100%;
+	padding: 0.875em 1em;
+	border: 1px solid #d0d0d0;
+	background: #fff;
+	color: #111;
+	${node.style.borderRadius != null ? "border-radius: " + String(node.style.borderRadius) + "px;" : ""}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => hasInsertedComponent(root, "email_input") || hasInsertedComponent(root, "phone_input")
+    },
+    survey: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const children = node.children.filter(function (child) {
+                return !child.ignored && child.visible;
+            });
+            const prompt = children[0] ? componentText(children[0]) : componentText(node, definition);
+            const options = (children.length > 1 ? children.slice(1) : [])
+                .map(function (child) {
+                return `<button class="usi_survey_option" type="button">${(0, string_1.escapeHtml)(componentText(child))}</button>`;
+            })
+                .join("") ||
+                `<button class="usi_survey_option" type="button">Option 1</button><button class="usi_survey_option" type="button">Option 2</button>`;
+            return `
+				<section class="${definition.render.className}">
+					<p class="usi_survey_prompt">${(0, string_1.escapeHtml)(prompt)}</p>
+					<div class="usi_survey_options">${options}</div>
+				</section>
+			`.trim();
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                const className = definition ? definition.render.className : "usi_survey";
+                return `
+${htmlToCssClassName(className)} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+${htmlToCssClassName(className)} .usi_survey_options {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+${htmlToCssClassName(className)} .usi_survey_option {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	cursor: pointer;
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => hasInsertedComponent(root, "survey_block")
+    },
+    coupon: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const childrenText = node.children
+                .map(function (child) {
+                return componentText(child);
+            })
+                .filter(Boolean);
+            const code = childrenText[0] || componentText(node, definition) || definition.render.fallbackText || "SAVE15";
+            const label = childrenText[1] || definition.render.buttonText || "Copy Code";
+            return `
+				<section class="${definition.render.className}">
+					<div class="usi_coupon_code">${(0, string_1.escapeHtml)(code)}</div>
+					<button class="usi_coupon_button" type="button">${(0, string_1.escapeHtml)(label)}</button>
+				</section>
+			`.trim();
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                const className = definition ? definition.render.className : "usi_coupon";
+                const buttonNode = node.children[1];
+                return `
+${htmlToCssClassName(className)} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75em;
+	align-items: center;
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+${htmlToCssClassName(className)} .usi_coupon_code {
+	padding: 0.75em 1em;
+	border: 1px solid #222;
+	background: #fff;
+	font-weight: 700;
+}
+
+${htmlToCssClassName(className)} .usi_coupon_button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	cursor: pointer;
+	${buttonNode ? flattenedBoxDeclarations(buttonNode, frameScale, { display: "inline-flex", "align-items": "center", "justify-content": "center" }) : ""}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => hasInsertedComponent(root, "copy_coupon")
+    },
+    optin: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            return `
+				<label class="${definition.render.className}">
+					<input class="usi_optin_input" type="checkbox" />
+					<span class="usi_optin_label">${(0, string_1.escapeHtml)(text)}</span>
+				</label>
+			`.trim();
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                const className = definition ? definition.render.className : "usi_optin";
+                return `
+${htmlToCssClassName(className)} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	display: flex;
+	gap: 0.625em;
+	align-items: center;
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+${htmlToCssClassName(className)} .usi_optin_input {
+	appearance: none;
+	-webkit-appearance: none;
+	width: 1.125em;
+	height: 1.125em;
+	border: 1px solid currentColor;
+	background: #fff;
+	flex: 0 0 auto;
+}
+
+${htmlToCssClassName(className)} .usi_optin_label {
+	display: inline-block;
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => hasInsertedComponent(root, "optin_component")
+    },
+    countdown: {
+        renderHtml: (_node, definition) => {
+            if (!definition)
+                return "";
+            return `<div class="${definition.render.className}"><span id="usi_minutes">5</span>:<span id="usi_seconds">00</span></div>`;
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                const className = definition ? definition.render.className : "usi_countdown";
+                return `
+${htmlToCssClassName(className)} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	display: inline-flex;
+	padding: 0.625em 0.875em;
+	${flattenedBoxDeclarations(node, frameScale)}
+	font-weight: 700;
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => hasInsertedComponent(root, "countdown_timer")
+    },
+    progress: {
+        renderHtml: (_node, definition) => {
+            if (!definition)
+                return "";
+            return `
+				<div class="${definition.render.className}">
+					<div class="usi_progress_fill"></div>
+				</div>
+			`.trim();
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                const className = definition ? definition.render.className : "usi_progress";
+                return `
+${htmlToCssClassName(className)} {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	height: 0.75em;
+	${flattenedBoxDeclarations(node, frameScale)}
+	border-radius: 999px;
+	overflow: hidden;
+}
+
+${htmlToCssClassName(className)} .usi_progress_fill {
+	width: 55%;
+	height: 100%;
+	background: #222;
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => hasInsertedComponent(root, "progress_bar")
+    },
+    product_title: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            const tag = definition.render.htmlTag || "h3";
+            const className = definition.render.className;
+            return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	margin: 0;
+	white-space: pre-wrap;
+	${flattenedTextDeclarations(node, frameScale)}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "product-title", 0.35).length > 0
+    },
+    product_subtitle: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            const tag = definition.render.htmlTag || "p";
+            const className = definition.render.className;
+            return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	margin: 0;
+	font-size: 0.9em;
+	${flattenedTextDeclarations(node, frameScale, { color: "#666" })}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "product-subtitle", 0.35).length > 0
+    },
+    product_price: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            const tag = definition.render.htmlTag || "p";
+            const className = definition.render.className;
+            return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	margin: 0;
+	${flattenedTextDeclarations(node, frameScale)}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "product-price", 0.35).length > 0
+    },
+    product_button: {
+        renderHtml: (node, definition) => {
+            if (!definition)
+                return "";
+            const text = node ? componentText(node, definition) : "";
+            const className = definition.render.className;
+            return `<button class="${className}" type="button">${(0, string_1.escapeHtml)(text || definition.render.buttonText || "View item")}</button>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	${flattenedBoxDeclarations(node, frameScale, {
+                    display: "inline-flex",
+                    "align-items": "center",
+                    "justify-content": "center",
+                    color: "#ffffff"
+                })}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "product-cta", 0.35).length > 0
+    },
+    product_image: {
+        renderHtml: (_node, definition, hideVisibleText) => {
+            if (!definition || hideVisibleText)
+                return "";
+            const className = definition.render.className;
+            return `<div class="${className}"><img src="${PRODUCT_PLACEHOLDER_IMAGE}" alt="Product" /></div>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	position: relative;
+	display: block;
+	width: 100%;
+	overflow: hidden;
+	${flattenedBoxDeclarations(node, frameScale, { width: "100%" })}
+}
+
+.${definition.render.className} img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: () => false
+    },
+    price_subtotal: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            return `<div class="${definition.render.className}">${(0, string_1.escapeHtml)(text)}</div>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	${flattenedTextDeclarations(node, frameScale)}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "summary-subtotal", 0.35).length > 0
+    },
+    price_discount: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            return `<div class="${definition.render.className}">${(0, string_1.escapeHtml)(text)}</div>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	font-weight: 700;
+	${flattenedTextDeclarations(node, frameScale)}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "summary-discount", 0.35).length > 0
+    },
+    price_total: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            return `<div class="${definition.render.className}">${(0, string_1.escapeHtml)(text)}</div>`;
+        },
+        renderCss: (nodes, _root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            return nodes
+                .map(function (node) {
+                const definition = componentDefinitionForNode(node);
+                if (!definition)
+                    return "";
+                return `
+.${definition.render.className} {
+	font-weight: 700;
+	${flattenedTextDeclarations(node, frameScale)}
+}
+`;
+            })
+                .join("");
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "summary-total", 0.35).length > 0
+    },
+    product_grid: {
+        renderHtml: (_node, _definition, _hideVisibleText, context) => {
+            const productHtml = String((context && context.productHtml) || "");
+            if (!productHtml)
+                return "";
+            return `<section class="usi_products usi_products_grid">${productHtml}</section>`;
+        },
+        renderCss: (nodes, root, frameScale, context) => {
+            if (!nodes.length)
+                return "";
+            const firstProductCard = context ? context.firstProductCard : undefined;
+            const productImageNode = context ? context.productImageNode : undefined;
+            const productTitleNode = context ? context.productTitleNode : undefined;
+            const productPriceNode = context ? context.productPriceNode : undefined;
+            const productButtonNode = context ? context.productButtonNode : undefined;
+            const productSubtitleNodes = context
+                ? context.productSubtitleNodes
+                : undefined;
+            const productGap = context ? context.productGap : undefined;
+            const gridColumns = context ? context.gridColumns : undefined;
+            const productBounds = context ? context.productBounds : undefined;
+            const productCardCss = nodes
+                .map(function (card, index) {
+                const imageNode = (0, tree_1.findNormalizedNodeById)(card, (0, tree_1.findImageNodeId)(card));
+                const imageRule = imageNode
+                    ? `
+.usi_product${index + 1} .usi_product_image {
+	width: 100%;
+	height: ${(0, css_1.toPercent)(imageNode.bounds.height, card.bounds.height)};
+	margin-left: 0;
+	margin-top: ${(0, css_1.toPercent)(imageNode.bounds.y - card.bounds.y, card.bounds.height)};
+}
+`
+                    : "";
+                return `
+.usi_product${index + 1} {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+${imageRule}
+`;
+            })
+                .join("");
+            return `
+.usi_products {
+	position: absolute;
+	left: ${productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : "0%"};
+	top: ${productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : "0%"};
+	width: ${productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : "100%"};
+	min-height: ${productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : "0%"};
+	display: grid;
+	grid-template-columns: repeat(${productBounds && productBounds.width < productBounds.height * 0.9 ? 1 : gridColumns || 1}, minmax(0, 1fr));
+	gap: ${productBounds && productGap != null ? (0, css_1.toPercent)(productGap, productBounds.width) : "2%"};
+	align-items: start;
+}
+
+.usi_product {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	padding: 0.9em;
+	min-width: 0;
+	${flattenedBoxDeclarations(firstProductCard, frameScale, {
+                width: "100%",
+                "max-width": "100%",
+                "min-width": "0"
+            }) || "width: 100%; max-width: 100%;"}
+}
+
+.usi_product_image {
+	position: relative;
+	display: block;
+	width: 100%;
+	overflow: hidden;
+	${flattenedBoxDeclarations(productImageNode, frameScale, { width: "100%" }) || "width: 100%;"}
+}
+
+.usi_product_image img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.usi_product_body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35em;
+	min-width: 0;
+}
+
+.usi_product_subtitle {
+	margin: 0;
+	font-size: 0.9em;
+	${productSubtitleNodes && productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
+}
+
+.usi_product_title {
+	margin: 0;
+	white-space: pre-wrap;
+	${flattenedTextDeclarations(productTitleNode, frameScale, {
+                "white-space": "pre-wrap",
+                "background-color": "transparent",
+                border: "none"
+            }) || "font-weight: 700;"}
+}
+
+.usi_product_price {
+	margin: 0;
+	${flattenedTextDeclarations(productPriceNode, frameScale) || ""}
+}
+
+.usi_product_cta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	${flattenedBoxDeclarations(productButtonNode, frameScale, {
+                display: "inline-flex",
+                "align-items": "center",
+                "justify-content": "center",
+                color: "#ffffff"
+            }) || "border: 1px solid currentColor; background: transparent; color:#ffffff;"}
+}
+
+${productCardCss}
+`;
+        },
+        shouldRender: () => false
+    },
+    price_table: {
+        renderHtml: (_node, _definition, _hideVisibleText, context) => {
+            return String((context && context.summaryHtml) || "");
+        },
+        renderCss: (nodes, root, frameScale, context) => {
+            if (!nodes.length)
+                return "";
+            const summaryNode = context ? context.summaryNode : undefined;
+            const summarySubtotalNode = context
+                ? context.summarySubtotalNode
+                : undefined;
+            const summaryDiscountNode = context
+                ? context.summaryDiscountNode
+                : undefined;
+            const summaryTotalNode = context ? context.summaryTotalNode : undefined;
+            return `
+.usi_summary {
+	position: absolute;
+	left: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
+	top: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : "59%"};
+	width: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : "76%"};
+	padding: 1em;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	${flattenedBoxDeclarations(summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_summary_title {
+	margin: 0 0 0.5em;
+	white-space: pre-wrap;
+	${flattenedTextDeclarations(summaryNode, frameScale, {
+                "font-size": "1em",
+                "font-weight": 700,
+                "white-space": "pre-wrap"
+            }) || "font-weight: 700; font-size: 1em;"}
+}
+
+.usi_summary_row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 1em;
+	align-items: start;
+	font-size: 1em;
+}
+
+.usi_price {
+	${flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_discount {
+	${flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_new_price {
+	${flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_label,
+.usi_value {
+	font-size: 1em;
+}
+
+.usi_new_price .usi_value,
+.usi_discount .usi_value,
+.usi_new_price strong,
+.usi_discount strong {
+	font-weight: 700;
+}
+`;
+        },
+        shouldRender: () => false
+    },
+    no_thanks_button: {
+        renderHtml: (node, definition) => {
+            if (!definition)
+                return "";
+            const text = node ? componentText(node, definition) : "";
+            const className = definition.render.className;
+            return `<button class="${className}" type="button">${(0, string_1.escapeHtml)(text || "No Thanks")}</button>`;
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            const node = nodes[0];
+            return `
+.usi_secondary_cta {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0.75em 1em;
+	cursor: pointer;
+	${flattenedBoxDeclarations(node, frameScale)}
+}
+`;
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "secondary-cta", 0.35).length > 0
+    },
+    disclaimer_text: {
+        renderHtml: (node, definition) => {
+            if (!node || !definition)
+                return "";
+            const text = componentText(node, definition);
+            const className = definition.render.className;
+            return `<p class="${className}">${(0, string_1.escapeHtml)(text)}</p>`;
+        },
+        renderCss: (nodes, root, frameScale) => {
+            if (!nodes.length)
+                return "";
+            const node = nodes[0];
+            return `
+.usi_disclaimer {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	margin: 0;
+	font-size: 0.875em;
+	line-height: 1.4;
+	${flattenedTextDeclarations(node, frameScale)}
+}
+`;
+        },
+        shouldRender: (root) => (0, tree_1.findNodesByRole)(root, "disclaimer", 0.35).length > 0
+    },
+    headline: {
+        renderHtml: (node, definition, _hideVisibleText, context) => {
+            const text = String((context && context.text) || (node && definition ? componentText(node, definition) : ""));
+            const className = String((context && context.className) || "usi_headline");
+            return text ? `<h1 class="${className}">${(0, string_1.escapeHtml)(text)}</h1>` : "";
+        },
+        renderCss: (nodes, _root, frameScale, context) => {
+            if (!nodes.length)
+                return "";
+            const mainBounds = context ? context.mainBounds : undefined;
+            const node = nodes[0];
+            if (!mainBounds)
+                return "";
+            return `
+.usi_headline {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - mainBounds.x, mainBounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - mainBounds.y, mainBounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+}
+`;
+        },
+        shouldRender: () => false
+    },
+    eyebrow: {
+        renderHtml: (node, definition, _hideVisibleText, context) => {
+            const text = String((context && context.text) || (node && definition ? componentText(node, definition) : ""));
+            const className = String((context && context.className) || "usi_eyebrow");
+            return text ? `<p class="${className}">${(0, string_1.escapeHtml)(text)}</p>` : "";
+        },
+        renderCss: (nodes, _root, frameScale, context) => {
+            if (!nodes.length)
+                return "";
+            const mainBounds = context ? context.mainBounds : undefined;
+            const node = nodes[0];
+            if (!mainBounds)
+                return "";
+            return `
+.usi_eyebrow {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - mainBounds.x, mainBounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - mainBounds.y, mainBounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+}
+`;
+        },
+        shouldRender: () => false
+    },
+    subtext: {
+        renderHtml: (node, definition, _hideVisibleText, context) => {
+            const text = String((context && context.text) || (node && definition ? componentText(node, definition) : ""));
+            const className = String((context && context.className) || "usi_subtext");
+            return text ? `<p class="${className}">${(0, string_1.escapeHtml)(text)}</p>` : "";
+        },
+        renderCss: (nodes, _root, frameScale, context) => {
+            if (!nodes.length)
+                return "";
+            const mainBounds = context ? context.mainBounds : undefined;
+            const node = nodes[0];
+            if (!mainBounds)
+                return "";
+            return `
+.usi_subtext {
+	position: absolute;
+	left: ${(0, css_1.toPercent)(node.bounds.x - mainBounds.x, mainBounds.width)};
+	top: ${(0, css_1.toPercent)(node.bounds.y - mainBounds.y, mainBounds.height)};
+	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+}
+`;
+        },
+        shouldRender: () => false
+    },
+    primary_button: {
+        renderHtml: (node, definition, _hideVisibleText, context) => {
+            const ctaLabel = String((context && context.ctaLabel) ||
+                (definition ? definition.render.buttonText || definition.label : "Redeem Now"));
+            const ctaInnerHtml = String((context && context.ctaInnerHtml) || (0, string_1.escapeHtml)(ctaLabel));
+            const showCtaInVariant = !!(context && context.showCtaInVariant);
+            if (!showCtaInVariant)
+                return "";
+            const className = definition ? definition.render.className : "usi_primary_cta";
+            const ariaLabel = (0, string_1.escapeHtml)(ctaLabel);
+            return `<button class="${className} usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="${ariaLabel}">${ctaInnerHtml}</button>`;
+        },
+        renderCss: (nodes, root, frameScale) => {
+            const node = nodes[0];
+            return `
+.usi_submitbutton {
+	position: absolute;
+	left: ${node ? (0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
+	top: ${node ? (0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height) : "77%"};
+	width: ${node ? (0, css_1.toPercent)(node.bounds.width, root.bounds.width) : "76%"};
+	min-height: ${node ? (0, css_1.toPercent)(node.bounds.height, root.bounds.height) : "15.5%"};
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	${flattenedBoxDeclarations(node, frameScale, {
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "center",
+                "background-color": node && node.style.background ? node.style.background : "#1f1f1f",
+                color: node && node.style.color ? node.style.color : "#ffffff",
+                "text-align": node && node.style.textAlign ? node.style.textAlign : "center"
+            })}
+}
+`;
+        },
+        shouldRender: () => true
+    },
+    close_control: {
+        renderHtml: () => `<button type="button" id="usi_close" aria-label="Close">×</button>`,
+        renderCss: (_nodes, root, frameScale, context) => {
+            const closeVisualNode = context ? context.closeVisualNode : undefined;
+            const closeNode = context ? context.closeNode : undefined;
+            const node = closeVisualNode || closeNode;
+            return `
+#usi_close {
+	position: absolute;
+	left: ${node ? (0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width) : "95%"};
+	top: ${node ? (0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height) : "2%"};
+	width: ${node ? (0, css_1.toPercent)(node.bounds.width, root.bounds.width) : "3%"};
+	height: ${node ? (0, css_1.toPercent)(node.bounds.height, root.bounds.height) : "3%"};
+	z-index: 2000000300;
+	cursor: pointer;
+	padding: 0;
+	margin: 0;
+	display: block;
+	overflow: hidden;
+	text-indent: -9999px;
+	${flattenedBoxDeclarations(node, frameScale, { background: "none", border: "none" }) || "background:none;border:none;"}
+}
+
+#usi_close::before {
+	content: "×";
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-indent: 0;
+	${flattenedTextDeclarations(node, frameScale, {
+                background: "transparent",
+                border: "none",
+                "text-align": "center",
+                "line-height": "1"
+            }) || "background:transparent;border:none;text-align:center;line-height:1;"}
+}
+
+button#usi_close,
+button#usi_close:hover,
+button#usi_close:active,
+button#usi_close:focus {
+	cursor: pointer;
+}
+`;
+        },
+        shouldRender: () => true
+    },
+    screen: {
+        renderHtml: (_node, _definition, _hideVisibleText, context) => {
+            const contentHtml = String((context && context.contentHtml) || "");
+            const imageFileName = String((context && context.imageFileName) || "");
+            const headlineText = String((context && context.headlineText) || "Preview");
+            const scaledRootWidth = context ? context.scaledRootWidth : undefined;
+            const scaledRootHeight = context ? context.scaledRootHeight : undefined;
+            return `
+		<div id="usi_container">
+			<div
+				id="usi_display"
+				role="alertdialog"
+				aria-label="${(0, string_1.escapeHtml)(headlineText || "Preview")}"
+				aria-modal="true"
+				class="usi_display usi_show_css usi_shadow"
+				style="width:${scaledRootWidth}px;height:${scaledRootHeight}px;"
+			>
+				<div id="usi_content">${contentHtml}</div>
+				<div id="usi_background">
+					<img
+						src="${(0, string_1.escapeHtml)(imageFileName)}"
+						aria-hidden="true"
+						alt="${(0, string_1.escapeHtml)(headlineText || "Preview")}"
+						id="usi_background_img"
+						style="width:100%;height:100%;"
+					/>
+				</div>
+			</div>
+		</div>
+			`.trim();
+        },
+        renderCss: (_nodes, root, _frameScale, context) => {
+            const scaledRootWidth = context ? context.scaledRootWidth : undefined;
+            const scaledRootHeight = context ? context.scaledRootHeight : undefined;
+            return `
+.usi_display * {
+	font-size: 1em;
+	line-height: 1.2;
+	box-sizing: border-box;
+	color: inherit;
+	font-family: inherit;
+}
+
+#usi_display {
+	position: relative;
+	display: block;
+	left: 50%;
+	margin-left: -${String((scaledRootWidth || 0) / 2)}px;
+	top: 0px;
+	width: ${scaledRootWidth}px;
+	height: ${scaledRootHeight}px;
+	font-size: 16px;
+	color: #000;
+	font-family: inherit;
+	${root.layout && root.layout.padding ? "padding: " + root.layout.padding.top + "px " + root.layout.padding.right + "px " + root.layout.padding.bottom + "px " + root.layout.padding.left + "px;" : ""}
+	${root.style.borderRadius != null ? "border-radius: " + String(root.style.borderRadius) + "px;" : ""}
+}
+`;
+        },
+        shouldRender: () => true
+    },
+    content_layout: {
+        renderHtml: (_node, _definition, _hideVisibleText, context) => {
+            const eyebrowHtml = String((context && context.eyebrowHtml) || "");
+            const headlineHtml = String((context && context.headlineHtml) || "");
+            const subtextHtml = String((context && context.subtextHtml) || "");
+            const ctaHtml = String((context && context.ctaHtml) || "");
+            const flattenedExtraMainHtml = String((context && context.flattenedExtraMainHtml) || "");
+            const flattenedExtraUtilityHtml = String((context && context.flattenedExtraUtilityHtml) || "");
+            const extraComponentsHtml = String((context && context.extraComponentsHtml) || "");
+            return `
+<section class="usi_main">
+	${eyebrowHtml}
+	${headlineHtml}
+	${subtextHtml}
+	${ctaHtml}
+	${flattenedExtraMainHtml}
+	${flattenedExtraUtilityHtml}
+	${extraComponentsHtml}
+</section>
+			`.trim();
+        },
+        renderCss: (_nodes, root, _frameScale, context) => {
+            const hasProducts = !!(context && context.hasProducts);
+            const hasSummary = !!(context && context.hasSummary);
+            const mainBounds = context ? context.mainBounds : undefined;
+            return `
+.usi_main {
+	position: absolute;
+	left: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.x - root.bounds.x, root.bounds.width) : "0%") : "0%"};
+	top: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.y - root.bounds.y, root.bounds.height) : "0%") : "0%"};
+	width: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.width, root.bounds.width) : "100%") : "100%"};
+	height: ${!hasProducts && !hasSummary ? "100%" : mainBounds ? (0, css_1.toPercent)(mainBounds.height, root.bounds.height) : "100%"};
+}
+`;
+        },
+        shouldRender: () => true
+    },
+    aside_layout: {
+        renderHtml: (_node, _definition, _hideVisibleText, context) => {
+            const hasProducts = !!(context && context.hasProducts);
+            const flattenedExtraAsideHtml = String((context && context.flattenedExtraAsideHtml) || "");
+            const productHtml = String((context && context.productHtml) || "");
+            if (!hasProducts && !flattenedExtraAsideHtml)
+                return "";
+            return `
+<section class="usi_aside">
+	${hasProducts ? productHtml : ""}
+	${flattenedExtraAsideHtml}
+</section>
+			`.trim();
+        },
+        renderCss: () => "",
+        shouldRender: () => true
+    }
+};
+function renderComponentByKey(rendererKey, node, definition, hideVisibleText, context) {
+    const renderer = COMPONENT_RENDERERS[rendererKey];
+    if (!renderer)
+        return "";
+    return renderer.renderHtml(node, definition, hideVisibleText, context);
+}
 function renderExplicitComponentNode(node, hideVisibleText) {
     const definition = componentDefinitionForNode(node);
     if (!definition)
         return "";
+    const idRenderer = COMPONENT_RENDERERS[definition.id];
+    if (idRenderer) {
+        return idRenderer.renderHtml(node, definition, hideVisibleText);
+    }
+    const kind = definition.render.kind;
+    const renderer = COMPONENT_RENDERERS[kind];
+    if (renderer) {
+        return renderer.renderHtml(node, definition, hideVisibleText);
+    }
     const tag = definition.render.htmlTag;
     const className = definition.render.className;
     const text = componentText(node, definition);
-    const kind = definition.render.kind;
-    if (kind === "container") {
-        return `<${tag} class="${className}"></${tag}>`;
-    }
-    if (kind === "input") {
-        const placeholder = hideVisibleText ? "" : (0, string_1.escapeHtml)(text);
-        return `
-			<label class="${className}">
-				<span class="usi_field_label usi_sr_only">${(0, string_1.escapeHtml)(node.name || definition.label)}</span>
-				<input
-					class="usi_field_input"
-					type="${(0, string_1.escapeHtml)(definition.render.inputType || "text")}"
-					placeholder="${placeholder}"
-				/>
-			</label>
-		`.trim();
-    }
-    if (kind === "survey") {
-        const children = node.children.filter(function (child) {
-            return !child.ignored && child.visible;
-        });
-        const prompt = children[0] ? componentText(children[0]) : text;
-        const options = (children.length > 1 ? children.slice(1) : [])
-            .map(function (child) {
-            return `
-						<button class="usi_survey_option" type="button">
-							${(0, string_1.escapeHtml)(componentText(child))}
-						</button>
-					`.trim();
-        })
-            .join("") ||
-            `
-				<button class="usi_survey_option" type="button">Option 1</button>
-				<button class="usi_survey_option" type="button">Option 2</button>
-			`
-                .replace(/\s+/g, " ")
-                .trim();
-        return `
-			<section class="${className}">
-				<p class="usi_survey_prompt">${(0, string_1.escapeHtml)(prompt)}</p>
-				<div class="usi_survey_options">${options}</div>
-			</section>
-		`.trim();
-    }
-    if (kind === "coupon") {
-        const childrenText = node.children
-            .map(function (child) {
-            return componentText(child);
-        })
-            .filter(Boolean);
-        const code = childrenText[0] || text || definition.render.fallbackText || "SAVE15";
-        const label = childrenText[1] || definition.render.buttonText || "Copy Code";
-        return `
-			<section class="${className}">
-				<div class="usi_coupon_code">${(0, string_1.escapeHtml)(code)}</div>
-				<button class="usi_coupon_button" type="button">${(0, string_1.escapeHtml)(label)}</button>
-			</section>
-		`.trim();
-    }
-    if (kind === "optin") {
-        return `
-			<label class="${className}">
-				<input class="usi_optin_input" type="checkbox" />
-				<span class="usi_optin_label">${(0, string_1.escapeHtml)(text)}</span>
-			</label>
-		`.trim();
-    }
-    if (kind === "countdown") {
-        return `<div class="${className}">${(0, string_1.escapeHtml)(text || "09:59")}</div>`;
-    }
-    if (kind === "progress") {
-        return `
-			<div class="${className}">
-				<div class="usi_progress_fill"></div>
-			</div>
-		`.trim();
-    }
-    if (kind === "media") {
-        if (tag === "hr") {
-            return `<hr class="${className}" />`;
-        }
-        return `<div class="${className}" aria-hidden="true"></div>`;
-    }
-    if (kind === "button" || tag === "button") {
-        return `
-			<button class="${className}" type="button">
-				${(0, string_1.escapeHtml)(text || definition.render.buttonText || definition.label)}
-			</button>
-		`.trim();
-    }
     return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
 }
 function renderExtraRegionNodes(root, region, excludedIds, hideVisibleText) {
@@ -3250,6 +4307,104 @@ function formatFlattenedHtml(html) {
     })
         .join("\n");
 }
+function generateProductGridHtml(products, hideVisibleText, isRuntime) {
+    if (!products.length)
+        return "";
+    return products
+        .map(function (product, index) {
+        const fallbackTitle = (0, string_1.escapeHtml)(product.title || "Product Name");
+        const fallbackSubtitle = (0, string_1.escapeHtml)(product.subtitle || "");
+        const fallbackPrice = (0, string_1.escapeHtml)(product.price || "$XX.XX");
+        const fallbackButton = (0, string_1.escapeHtml)(product.cta || "View item");
+        const fallbackTitleForRuntime = fallbackTitle.replace(/'/g, "&#39;");
+        if (isRuntime) {
+            return `
+					<article class="usi_product_card usi_product usi_product${index + 1}">
+						${!hideVisibleText
+                ? `<div class="usi_product_image">
+							<img
+								src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
+								alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}"
+							/>
+						</div>`
+                : ""}
+						<div class="usi_product_body">
+							<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}</h3>
+							${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
+							<p class="usi_product_price">${fallbackPrice}</p>
+							<button class="usi_product_cta" type="button">${fallbackButton}</button>
+						</div>
+					</article>
+				`.trim();
+        }
+        return `
+				<article class="usi_product_card usi_product usi_product${index + 1}">
+					<div class="usi_product_image">
+						<img src="${PRODUCT_PLACEHOLDER_IMAGE}" alt="${fallbackTitle}" />
+					</div>
+					<div class="usi_product_body">
+						<h3 class="usi_product_title">${fallbackTitle}</h3>
+						${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
+						<p class="usi_product_price">${fallbackPrice}</p>
+						<button class="usi_product_cta" type="button">${fallbackButton}</button>
+					</div>
+				</article>
+			`.trim();
+    })
+        .join("");
+}
+function generateSummaryHtml(hasSummary, summaryTitle, isRuntime) {
+    if (!hasSummary)
+        return "";
+    if (isRuntime) {
+        return `
+			<section class="usi_summary" aria-label="Cart summary">
+				${summaryTitle ? `<h2 class="usi_summary_title">${(0, string_1.escapeHtml)(summaryTitle)}</h2>` : ""}
+				<div class="usi_summary_row usi_price">
+					<span class="usi_label">Subtotal:</span>
+					<strong class="usi_value">$\${usi_js.product.subtotal}</strong>
+				</div>
+				<div class="usi_summary_row usi_discount">
+					<span class="usi_label">Discount:</span>
+					<strong class="usi_value">- $\${usi_js.product.discount}</strong>
+				</div>
+				<div class="usi_summary_row usi_new_price">
+					<span class="usi_label">Total:</span>
+					<strong class="usi_value">$\${usi_js.product.new_price}</strong>
+				</div>
+			</section>
+		`.trim();
+    }
+    return `
+		<section class="usi_summary" aria-label="Cart summary">
+			${summaryTitle ? `<h2 class="usi_summary_title">${(0, string_1.escapeHtml)(summaryTitle)}</h2>` : ""}
+			<div class="usi_summary_row usi_price">
+				<span class="usi_label">Subtotal:</span>
+				<strong class="usi_value">$XX.XX</strong>
+			</div>
+			<div class="usi_summary_row usi_discount">
+				<span class="usi_label">Discount:</span>
+				<strong class="usi_value">- $XX.XX</strong>
+			</div>
+			<div class="usi_summary_row usi_new_price">
+				<span class="usi_label">Total:</span>
+				<strong class="usi_value">$XX.XX</strong>
+			</div>
+		</section>
+	`.trim();
+}
+function groupNodesByRenderer(nodes) {
+    return nodes.reduce(function (acc, node) {
+        const definition = componentDefinitionForNode(node);
+        if (!definition)
+            return acc;
+        const rendererKey = COMPONENT_RENDERERS[definition.id] ? definition.id : definition.render.kind;
+        if (!acc[rendererKey])
+            acc[rendererKey] = [];
+        acc[rendererKey].push(node);
+        return acc;
+    }, {});
+}
 function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const frameScale = 1;
     const scaledRootWidth = (0, css_1.scalePx)(root.bounds.width, frameScale) || root.bounds.width;
@@ -3322,16 +4477,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const summaryTitle = resolveSummaryTitle(summaryNode);
     const hasProducts = !!analysis.schema.products.length && !!productCardNodes.length && !!productBounds;
     const hasSummary = !!analysis.schema.summary && !!summaryNode;
-    const hasEmailInput = hasInsertedComponent(root, "email_input");
-    const hasPhoneInput = hasInsertedComponent(root, "phone_input");
-    const hasSurvey = hasInsertedComponent(root, "survey_block");
-    const hasCoupon = hasInsertedComponent(root, "copy_coupon");
-    const hasOptin = hasInsertedComponent(root, "optin_component");
-    const hasCountdown = hasInsertedComponent(root, "countdown_timer");
-    const hasProgress = hasInsertedComponent(root, "progress_bar");
-    const hasMediaPanel = hasInsertedComponent(root, "media_panel");
-    const hasSecondaryCta = hasInsertedComponent(root, "no_thanks_button");
-    const hasDisclaimer = hasInsertedComponent(root, "disclaimer_text");
     const productGap = productCardNodes.length > 1 && productBounds
         ? productCardNodes.slice(1).reduce(function (sum, card, index) {
             const previous = productCardNodes[index];
@@ -3340,94 +4485,8 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
             (productCardNodes.length - 1)
         : 0;
     const gridColumns = Math.max(1, Math.min(productCardNodes.length || analysis.schema.products.length || 1, 3));
-    const previewProductHtml = analysis.schema.products.length
-        ? analysis.schema.products
-            .map(function (product, index) {
-            const fallbackTitle = (0, string_1.escapeHtml)(product.title || "Product Name");
-            const fallbackSubtitle = (0, string_1.escapeHtml)(product.subtitle || "");
-            const fallbackPrice = (0, string_1.escapeHtml)(product.price || "$XX.XX");
-            const fallbackButton = (0, string_1.escapeHtml)(product.cta || "View item");
-            return `
-						<article class="usi_product_card usi_product usi_product${index + 1}">
-							<div class="usi_product_image">
-								<img src="${PRODUCT_PLACEHOLDER_IMAGE}" alt="${fallbackTitle}" />
-							</div>
-							<div class="usi_product_body">
-								<h3 class="usi_product_title">${fallbackTitle}</h3>
-								${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
-								<p class="usi_product_price">${fallbackPrice}</p>
-								<button class="usi_product_cta" type="button">${fallbackButton}</button>
-							</div>
-						</article>
-					`.trim();
-        })
-            .join("")
-        : "";
-    const runtimeProductHtml = analysis.schema.products.length
-        ? analysis.schema.products
-            .map(function (product, index) {
-            const fallbackTitle = (0, string_1.escapeHtml)(product.title || "Product Name");
-            const fallbackSubtitle = (0, string_1.escapeHtml)(product.subtitle || "");
-            const fallbackPrice = (0, string_1.escapeHtml)(product.price || "$XX.XX");
-            const fallbackButton = (0, string_1.escapeHtml)(product.cta || "View item");
-            const fallbackTitleForRuntime = fallbackTitle.replace(/'/g, "&#39;");
-            return `
-						<article class="usi_product_card usi_product usi_product${index + 1}">
-							<div class="usi_product_image">
-								<img
-									src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
-									alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}"
-								/>
-							</div>
-							<div class="usi_product_body">
-								<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}</h3>
-								${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
-								<p class="usi_product_price">${fallbackPrice}</p>
-								<button class="usi_product_cta" type="button">${fallbackButton}</button>
-							</div>
-						</article>
-					`.trim();
-        })
-            .join("")
-        : "";
-    const previewSummaryHtml = hasSummary
-        ? `
-				<section class="usi_summary" aria-label="Cart summary">
-					${summaryTitle ? `<h2 class="usi_summary_title">${(0, string_1.escapeHtml)(summaryTitle)}</h2>` : ""}
-					<div class="usi_summary_row usi_price">
-						<span class="usi_label">Subtotal:</span>
-						<strong class="usi_value">$XX.XX</strong>
-					</div>
-					<div class="usi_summary_row usi_discount">
-						<span class="usi_label">Discount:</span>
-						<strong class="usi_value">- $XX.XX</strong>
-					</div>
-					<div class="usi_summary_row usi_new_price">
-						<span class="usi_label">Total:</span>
-						<strong class="usi_value">$XX.XX</strong>
-					</div>
-				</section>
-			`.trim()
-        : "";
-    const runtimeSummaryHtml = hasSummary
-        ? `
-				<section class="usi_summary" aria-label="Cart summary">
-					${summaryTitle ? `<h2 class="usi_summary_title">${(0, string_1.escapeHtml)(summaryTitle)}</h2>` : ""}
-					<div class="usi_summary_row usi_price">
-						<span class="usi_label">Subtotal:</span>
-						<strong class="usi_value">$\${usi_js.product.subtotal}</strong>
-					</div>
-					<div class="usi_summary_row usi_discount">
-						<span class="usi_label">Discount:</span>
-						<strong class="usi_value">- $\${usi_js.product.discount}</strong>
-					</div>
-					<div class="usi_summary_row usi_new_price">
-						<span class="usi_label">Total:</span>
-						<strong class="usi_value">$\${usi_js.product.new_price}</strong>
-					</div>
-				</section>
-			`.trim()
-        : "";
+    const runtimeProductHtmlRaw = generateProductGridHtml(analysis.schema.products, hideVisibleText, true);
+    const runtimeSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, true);
     const flattenedExcludedIds = [
         analysis.eyebrowNodeId,
         analysis.headlineNodeId,
@@ -3440,7 +4499,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const flattenedExtraMainHtml = renderExtraRegionNodes(root, "main", flattenedExcludedIds, hideVisibleText);
     const flattenedExtraAsideHtml = renderExtraRegionNodes(root, "aside", flattenedExcludedIds, hideVisibleText);
     const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, "utility", flattenedExcludedIds, hideVisibleText);
-    // Explicitly render missing components to ensure they appear in flattened HTML
     const progressBarNodes = (0, tree_1.findNodesByRole)(root, "progress", 0.35);
     const countdownNodes = (0, tree_1.findNodesByRole)(root, "countdown", 0.35);
     const surveyNodes = topLevelNodes((0, tree_1.findNodesByRole)(root, "survey", 0.35), root);
@@ -3461,6 +4519,40 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         });
         return subtitles;
     })();
+    const productImageNodes = productCardNodes.length > 0
+        ? productCardNodes
+            .map(function (card) {
+            return findDescendantRoleNode(card, "product-image");
+        })
+            .filter(Boolean)
+        : [];
+    const summarySubtotalNodes = summaryNode ? (0, tree_1.findNodesByRole)(summaryNode, "summary-subtotal", 0.35) : [];
+    const summaryDiscountNodes = summaryNode ? (0, tree_1.findNodesByRole)(summaryNode, "summary-discount", 0.35) : [];
+    const summaryTotalNodes = summaryNode ? (0, tree_1.findNodesByRole)(summaryNode, "summary-total", 0.35) : [];
+    const extraComponentExcludedIds = [
+        analysis.summaryNodeId,
+        ...analysis.productCardNodeIds,
+        ...productImageNodes.map(function (n) {
+            return n.id;
+        }),
+        ...productSubtitleNodes.map(function (n) {
+            return n.id;
+        }),
+        ...summarySubtotalNodes.map(function (n) {
+            return n.id;
+        }),
+        ...summaryDiscountNodes.map(function (n) {
+            return n.id;
+        }),
+        ...summaryTotalNodes.map(function (n) {
+            return n.id;
+        })
+    ].filter(Boolean);
+    const realMediaPanelNodes = mediaPanelNodes.filter(function (node) {
+        return !productImageNodes.some(function (pImg) {
+            return pImg.id === node.id;
+        });
+    });
     const allExtraComponentNodes = [
         ...progressBarNodes,
         ...countdownNodes,
@@ -3470,625 +4562,177 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         ...copyCouponNodes,
         ...optinNodes,
         ...noThanksNodes,
-        ...mediaPanelNodes,
+        ...realMediaPanelNodes,
         ...disclaimerNodes,
-        ...dividerNodes,
-        ...productSubtitleNodes
-    ];
-    const extraComponentsHtml = allExtraComponentNodes
-        .map((node) => renderExplicitComponentNode(node, hideVisibleText))
-        .join("");
-    // Generate positioning CSS for extra components
-    const extraComponentsCss = allExtraComponentNodes
-        .map(function (node) {
+        ...dividerNodes
+    ].filter(function (node) {
+        return !extraComponentExcludedIds.includes(node.id);
+    });
+    const extraRenderableNodes = allExtraComponentNodes.filter(function (node) {
         const definition = componentDefinitionForNode(node);
-        if (!definition)
-            return "";
-        const className = definition.render.className;
-        return `
-.${className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
-	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
-	${flattenedBoxDeclarations(node, frameScale)}
-}
-`;
+        if (hideVisibleText && definition && definition.render && definition.render.kind === "media") {
+            const tag = definition.render.htmlTag;
+            if (tag !== "hr")
+                return false;
+        }
+        return true;
+    });
+    const extraComponentsHtml = extraRenderableNodes
+        .map(function (node) {
+        return renderExplicitComponentNode(node, hideVisibleText);
     })
         .join("");
-    const previewContentHtml = `
-		${closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : ""}
-		<section class="usi_main">
-			${eyebrowText ? `<p class="${eyebrowClass}">${(0, string_1.escapeHtml)(eyebrowText)}</p>` : ""}
-			${headlineText ? `<h1 class="${headlineClass}">${(0, string_1.escapeHtml)(headlineText)}</h1>` : ""}
-			${subtextText ? `<p class="${subtextClass}">${(0, string_1.escapeHtml)(subtextText)}</p>` : ""}
-			${showCtaInVariant
-        ? `<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="${(0, string_1.escapeHtml)(ctaLabel)}">${ctaInnerHtml}</button>`
-        : ""}
-			${flattenedExtraMainHtml}
-			${flattenedExtraUtilityHtml}
-			${extraComponentsHtml}
-		</section>
-		${hasProducts || flattenedExtraAsideHtml
-        ? `
-						<section class="usi_aside">
-							${hasProducts ? `<section class="usi_products usi_products_grid">${previewProductHtml}</section>` : ""}
-							${flattenedExtraAsideHtml}
-						</section>
-					`.trim()
-        : ""}
-		${previewSummaryHtml}
+    const eyebrowHtml = eyebrowText
+        ? renderComponentByKey("eyebrow", eyebrowNode, constants_1.COMPONENT_BY_ID.eyebrow_block, hideVisibleText, {
+            text: eyebrowText,
+            className: eyebrowClass
+        })
+        : "";
+    const headlineHtml = headlineText
+        ? renderComponentByKey("headline", headlineNode, constants_1.COMPONENT_BY_ID.headline_block, hideVisibleText, {
+            text: headlineText,
+            className: headlineClass
+        })
+        : "";
+    const subtextHtml = subtextText
+        ? renderComponentByKey("subtext", subtextNode, constants_1.COMPONENT_BY_ID.subtext_block, hideVisibleText, {
+            text: subtextText,
+            className: subtextClass
+        })
+        : "";
+    const ctaHtml = renderComponentByKey("primary_button", ctaNode, constants_1.COMPONENT_BY_ID.primary_button, hideVisibleText, {
+        showCtaInVariant,
+        ctaLabel,
+        ctaInnerHtml
+    });
+    const mainSectionHtml = renderComponentByKey("content_layout", undefined, undefined, hideVisibleText, {
+        eyebrowHtml,
+        headlineHtml,
+        subtextHtml,
+        ctaHtml,
+        flattenedExtraMainHtml,
+        flattenedExtraUtilityHtml,
+        extraComponentsHtml
+    });
+    const runtimeProductsSectionHtml = renderComponentByKey("product_grid", productContainerNode || firstProductCard, constants_1.COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: runtimeProductHtmlRaw });
+    const runtimeAsideHtml = renderComponentByKey("aside_layout", undefined, undefined, hideVisibleText, {
+        hasProducts,
+        flattenedExtraAsideHtml,
+        productHtml: runtimeProductsSectionHtml
+    });
+    const runtimeSummarySectionHtml = renderComponentByKey("price_table", summaryNode, constants_1.COMPONENT_BY_ID.price_table, hideVisibleText, { summaryHtml: runtimeSummaryHtml });
+    const contentHTML = `
+		${closeNode ? renderComponentByKey("close_control", closeNode, constants_1.COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
+		${mainSectionHtml}
+		${runtimeAsideHtml}
+		${runtimeSummarySectionHtml}
 	`.trim();
-    const runtimeContentHtml = `
-		${closeNode ? '<button type="button" id="usi_close" aria-label="Close">×</button>' : ""}
-		<section class="usi_main">
-			${eyebrowText ? `<p class="${eyebrowClass}">${(0, string_1.escapeHtml)(eyebrowText)}</p>` : ""}
-			${headlineText ? `<h1 class="${headlineClass}">${(0, string_1.escapeHtml)(headlineText)}</h1>` : ""}
-			${subtextText ? `<p class="${subtextClass}">${(0, string_1.escapeHtml)(subtextText)}</p>` : ""}
-			${showCtaInVariant
-        ? `<button class="usi_primary_cta usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="${(0, string_1.escapeHtml)(ctaLabel)}">${ctaInnerHtml}</button>`
-        : ""}
-			${flattenedExtraMainHtml}
-			${flattenedExtraUtilityHtml}
-			${extraComponentsHtml}
-		</section>
-		${hasProducts || flattenedExtraAsideHtml
-        ? `
-						<section class="usi_aside">
-							${hasProducts ? `<section class="usi_products usi_products_grid">${runtimeProductHtml}</section>` : ""}
-							${flattenedExtraAsideHtml}
-						</section>
-					`.trim()
-        : ""}
-		${runtimeSummaryHtml}
-	`.trim();
-    //const formattedPreviewContentHtml = previewContentHtml;
-    const formattedRuntimeContentHtml = runtimeContentHtml;
-    const html = `
-<!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<title>Preview</title>
-		<style>
-		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}.usi_display * {padding:0 0 0 0;margin:0 0 0 0;color:#000000;font-weight:normal;font-size:12pt;text-decoration:none;line-height:12pt;box-shadow: none;border: none; outline: none;text-align: left;font-family: Helvetica, Arial, sans-serif;float:none;} .usi_quickide_css {display:none;visibility:hidden;}#usi_close { position:absolute;left:85%;top:0px;width:15%;height:15%;z-index:2000000300;cursor:pointer;border:none;background:none;margin:0;padding:0; } 
-button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { background:none;border:none;cursor:pointer; } #usi_content { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000200; } #usi_background { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000100; } #usi_page { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000150; } .usi_sr_only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
-		</style>
-		<link
-			rel="stylesheet"
-			href="css/${hideVisibleText ? "flattened_text_baked.css" : "flattened_live_text.css"}"
-		/>
-	</head>
-	<body>
-		<div id="usi_container">
-			<div
-				id="usi_display"
-				role="alertdialog"
-				aria-label="${(0, string_1.escapeHtml)(headlineText || "Preview")}"
-				aria-modal="true"
-				class="usi_display usi_show_css usi_shadow"
-				style="width:${scaledRootWidth}px;height:${scaledRootHeight}px;"
-			>
-				<div id="usi_content">${previewContentHtml}</div>
-				<div id="usi_background">
-					<img
-						src="${(0, string_1.escapeHtml)(imageFileName)}"
-						aria-hidden="true"
-						alt="${(0, string_1.escapeHtml)(headlineText || "Preview")}"
-						id="usi_background_img"
-						style="width:100%;height:100%;"
-					/>
-				</div>
-			</div>
-		</div>
-	</body>
-</html>
-`.trim();
-    const productCardCss = productCardNodes
-        .map(function (card, index) {
-        const imageNode = (0, tree_1.findNormalizedNodeById)(card, (0, tree_1.findImageNodeId)(card));
-        const imageRule = imageNode
-            ? `
-.usi_product${index + 1} .usi_product_image {
-	width: 100%;
-	height: ${(0, css_1.toPercent)(imageNode.bounds.height, card.bounds.height)};
-	margin-left: 0;
-	margin-top: ${(0, css_1.toPercent)(imageNode.bounds.y - card.bounds.y, card.bounds.height)};
-}
-`
-            : "";
-        return `
-.usi_product${index + 1} {
-	width: 100%;
-	max-width: 100%;
-	min-width: 0;
-}
-${imageRule}
-`;
-    })
-        .join("");
-    const componentCss = [
-        hasEmailInput || hasPhoneInput
-            ? `
-.usi_field {
-	position: absolute;
-	left: ${emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${emailInputNodes[0] || phoneInputNodes[0] ? (0, css_1.toPercent)((emailInputNodes[0] || phoneInputNodes[0]).bounds.width, root.bounds.width) : "100%"};
-	display: flex;
-	flex-direction: column;
-	gap: 0.5em;
-	${emailInputNodes[0] || phoneInputNodes[0] ? flattenedBoxDeclarations(emailInputNodes[0] || phoneInputNodes[0], frameScale) : ""}
-}
-
-.usi_field_input {
-	width: 100%;
-	padding: 0.875em 1em;
-	border: 1px solid #d0d0d0;
-	background: #fff;
-	color: #111;
-	${emailInputNodes[0] || phoneInputNodes[0] ? (function () {
-                const inputNode = emailInputNodes[0] || phoneInputNodes[0];
-                return inputNode.style.borderRadius != null ? "border-radius: " + String(inputNode.style.borderRadius) + "px;" : "";
-            })() : ""}
-}
-`
-            : "",
-        hasSurvey
-            ? `
-.usi_survey {
-	position: absolute;
-	left: ${surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${surveyNodes[0] ? (0, css_1.toPercent)(surveyNodes[0].bounds.width, root.bounds.width) : "100%"};
-	display: flex;
-	flex-direction: column;
-	gap: 0.75em;
-	${surveyNodes[0] ? flattenedBoxDeclarations(surveyNodes[0], frameScale) : ""}
-}
-
-.usi_survey_options {
-	display: flex;
-	flex-direction: column;
-	gap: 0.5em;
-}
-
-.usi_survey_option {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0.75em 1em;
-	cursor: pointer;
-}
-`
-            : "",
-        hasCoupon
-            ? `
-.usi_coupon {
-	position: absolute;
-	left: ${copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${copyCouponNodes[0] ? (0, css_1.toPercent)(copyCouponNodes[0].bounds.width, root.bounds.width) : "100%"};
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.75em;
-	align-items: center;
-	${copyCouponNodes[0] ? flattenedBoxDeclarations(copyCouponNodes[0], frameScale) : ""}
-}
-
-.usi_coupon_code {
-	padding: 0.75em 1em;
-	border: 1px solid #222;
-	background: #fff;
-	font-weight: 700;
-}
-
-.usi_coupon_button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0.75em 1em;
-	cursor: pointer;
-	${copyCouponNodes[0] && copyCouponNodes[0].children[1]
-                ? flattenedBoxDeclarations(copyCouponNodes[0].children[1], frameScale, {
-                    display: "inline-flex",
-                    "align-items": "center",
-                    "justify-content": "center"
-                })
-                : ""}
-}
-`
-            : "",
-        hasOptin
-            ? `
-.usi_optin {
-	position: absolute;
-	left: ${optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${optinNodes[0] ? (0, css_1.toPercent)(optinNodes[0].bounds.width, root.bounds.width) : "100%"};
-	display: flex;
-	gap: 0.625em;
-	align-items: center;
-	${optinNodes[0] ? flattenedBoxDeclarations(optinNodes[0], frameScale) : ""}
-}
-
-.usi_optin_input {
-	appearance: none;
-	-webkit-appearance: none;
-	width: 1.125em;
-	height: 1.125em;
-	border: 1px solid currentColor;
-	background: #fff;
-	flex: 0 0 auto;
-}
-
-.usi_optin_label {
-	display: inline-block;
-}
-`
-            : "",
-        hasCountdown
-            ? `
-.usi_countdown {
-	position: absolute;
-	left: ${countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${countdownNodes[0] ? (0, css_1.toPercent)(countdownNodes[0].bounds.width, root.bounds.width) : "auto"};
-	display: inline-flex;
-	padding: 0.625em 0.875em;
-	${countdownNodes[0] ? flattenedBoxDeclarations(countdownNodes[0], frameScale) : "background: #1f1f1f; color: #fff;"}
-	font-weight: 700;
-}
-`
-            : "",
-        hasProgress
-            ? `
-.usi_progress {
-	position: absolute;
-	left: ${progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${progressBarNodes[0] ? (0, css_1.toPercent)(progressBarNodes[0].bounds.width, root.bounds.width) : "100%"};
-	height: 0.75em;
-	${progressBarNodes[0] ? flattenedBoxDeclarations(progressBarNodes[0], frameScale) : "background: #ddd;"}
-	border-radius: 999px;
-	overflow: hidden;
-}
-
-.usi_progress_fill {
-	width: 55%;
-	height: 100%;
-	background: #222;
-}
-`
-            : "",
-        hasMediaPanel
-            ? `
-.usi_media_panel {
-	position: absolute;
-	left: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.width, root.bounds.width) : "100%"};
-	height: ${mediaPanelNodes[0] ? (0, css_1.toPercent)(mediaPanelNodes[0].bounds.height, root.bounds.height) : "8em"};
-	${mediaPanelNodes[0] ? flattenedBoxDeclarations(mediaPanelNodes[0], frameScale) : "background: #d9d9d9;"}
-}
-`
-            : "",
-        hasSecondaryCta
-            ? `
-.usi_secondary_cta {
-	position: absolute;
-	left: ${noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${noThanksNodes[0] ? (0, css_1.toPercent)(noThanksNodes[0].bounds.width, root.bounds.width) : "auto"};
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0.75em 1em;
-	cursor: pointer;
-	${noThanksNodes[0] ? flattenedBoxDeclarations(noThanksNodes[0], frameScale) : ""}
-}
-`
-            : "",
-        hasDisclaimer
-            ? `
-.usi_disclaimer {
-	position: absolute;
-	left: ${disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${disclaimerNodes[0] ? (0, css_1.toPercent)(disclaimerNodes[0].bounds.width, root.bounds.width) : "auto"};
-	margin: 0;
-	font-size: 0.875em;
-	line-height: 1.4;
-	${disclaimerNodes[0] ? flattenedTextDeclarations(disclaimerNodes[0], frameScale) : "color: #666;"}
-}
-`
-            : "",
-        dividerNodes.length > 0
-            ? `
-.usi_divider {
-	position: absolute;
-	left: ${dividerNodes[0] ? (0, css_1.toPercent)(dividerNodes[0].bounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${dividerNodes[0] ? (0, css_1.toPercent)(dividerNodes[0].bounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${dividerNodes[0] ? (0, css_1.toPercent)(dividerNodes[0].bounds.width, root.bounds.width) : "100%"};
-	margin: 0;
-	${dividerNodes[0] ? flattenedBoxDeclarations(dividerNodes[0], frameScale) : "border: 1px solid #ddd;"}
-}
-`
-            : ""
-    ].join("");
+    const htmlDocumentBody = renderComponentByKey("screen", root, undefined, hideVisibleText, {
+        contentHtml: contentHTML,
+        imageFileName,
+        headlineText,
+        scaledRootWidth,
+        scaledRootHeight
+    });
     const textRegionCss = [
         headlineText && headlineNode && mainBounds
-            ? `
-.usi_headline {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(headlineNode.bounds.x - mainBounds.x, mainBounds.width)};
-	top: ${(0, css_1.toPercent)(headlineNode.bounds.y - mainBounds.y, mainBounds.height)};
-	width: ${(0, css_1.toPercent)(headlineNode.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(headlineNode, frameScale, { "white-space": "pre-wrap" })}
-}
-`
+            ? COMPONENT_RENDERERS.headline.renderCss([headlineNode], root, frameScale, { mainBounds })
             : "",
         eyebrowText && eyebrowNode && mainBounds
-            ? `
-.usi_eyebrow {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(eyebrowNode.bounds.x - mainBounds.x, mainBounds.width)};
-	top: ${(0, css_1.toPercent)(eyebrowNode.bounds.y - mainBounds.y, mainBounds.height)};
-	width: ${(0, css_1.toPercent)(eyebrowNode.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(eyebrowNode, frameScale, { "white-space": "pre-wrap" })}
-}
-`
+            ? COMPONENT_RENDERERS.eyebrow.renderCss([eyebrowNode], root, frameScale, { mainBounds })
             : "",
         subtextText && subtextNode && mainBounds
-            ? `
-.usi_subtext {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(subtextNode.bounds.x - mainBounds.x, mainBounds.width)};
-	top: ${(0, css_1.toPercent)(subtextNode.bounds.y - mainBounds.y, mainBounds.height)};
-	width: ${(0, css_1.toPercent)(subtextNode.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(subtextNode, frameScale, { "white-space": "pre-wrap" })}
-}
-`
+            ? COMPONENT_RENDERERS.subtext.renderCss([subtextNode], root, frameScale, { mainBounds })
             : ""
     ].join("");
+    const rendererNodeMap = {
+        input: [...emailInputNodes, ...phoneInputNodes],
+        survey: surveyNodes,
+        coupon: copyCouponNodes,
+        optin: optinNodes,
+        countdown: countdownNodes,
+        progress: progressBarNodes,
+        media: [...dividerNodes, ...realMediaPanelNodes],
+        product_title: productTitleNode ? [productTitleNode] : [],
+        product_subtitle: productSubtitleNodes,
+        product_price: productPriceNode ? [productPriceNode] : [],
+        product_button: productButtonNode ? [productButtonNode] : [],
+        product_image: productImageNode ? [productImageNode] : [],
+        price_subtotal: summarySubtotalNode ? [summarySubtotalNode] : [],
+        price_discount: summaryDiscountNode ? [summaryDiscountNode] : [],
+        price_total: summaryTotalNode ? [summaryTotalNode] : [],
+        disclaimer_text: disclaimerNodes,
+        no_thanks_button: noThanksNodes
+    };
+    if (hasProducts) {
+        rendererNodeMap.product_grid = productCardNodes;
+    }
+    if (hasSummary && summaryNode) {
+        rendererNodeMap.price_table = [summaryNode];
+    }
+    const groupedExtraComponentNodes = groupNodesByRenderer(extraRenderableNodes);
+    Object.keys(groupedExtraComponentNodes).forEach(function (key) {
+        if (!rendererNodeMap[key])
+            rendererNodeMap[key] = [];
+        const seen = new Set(rendererNodeMap[key].map(function (node) {
+            return node.id;
+        }));
+        groupedExtraComponentNodes[key].forEach(function (node) {
+            if (!seen.has(node.id)) {
+                rendererNodeMap[key].push(node);
+            }
+        });
+    });
+    const componentCss = Object.keys(rendererNodeMap)
+        .map(function (key) {
+        const renderer = COMPONENT_RENDERERS[key];
+        const nodes = rendererNodeMap[key];
+        if (!renderer || !nodes.length)
+            return "";
+        if (key === "product_grid") {
+            return renderer.renderCss(nodes, root, frameScale, {
+                firstProductCard,
+                productImageNode,
+                productTitleNode,
+                productPriceNode,
+                productButtonNode,
+                productSubtitleNodes,
+                productGap,
+                gridColumns,
+                productBounds
+            });
+        }
+        if (key === "price_table") {
+            return renderer.renderCss(nodes, root, frameScale, {
+                summaryNode,
+                summarySubtotalNode,
+                summaryDiscountNode,
+                summaryTotalNode
+            });
+        }
+        return renderer.renderCss(nodes, root, frameScale);
+    })
+        .join("");
+    const baseCss = [
+        COMPONENT_RENDERERS.screen.renderCss([], root, frameScale, {
+            scaledRootWidth,
+            scaledRootHeight
+        }),
+        COMPONENT_RENDERERS.close_control.renderCss([], root, frameScale, {
+            closeVisualNode,
+            closeNode
+        }),
+        COMPONENT_RENDERERS.content_layout.renderCss([], root, frameScale, {
+            hasProducts,
+            hasSummary,
+            mainBounds
+        }),
+        showCtaInVariant ? COMPONENT_RENDERERS.primary_button.renderCss(ctaNode ? [ctaNode] : [], root, frameScale) : ""
+    ].join("");
     const css = `
-.usi_display * {
-	font-size: 1em;
-	line-height: 1.2;
-	box-sizing: border-box;
-	color: inherit;
-	font-family: inherit;
-}
-
-#usi_display {
-	position: relative;
-	display: block;
-	left: 50%;
-	margin-left: -${String(scaledRootWidth / 2)}px;
-	top: 0px;
-	width: ${scaledRootWidth}px;
-	height: ${scaledRootHeight}px;
-	font-size: 16px;
-	color: #000;
-	font-family: inherit;
-	${root.layout && root.layout.padding ? "padding: " + root.layout.padding.top + "px " + root.layout.padding.right + "px " + root.layout.padding.bottom + "px " + root.layout.padding.left + "px;" : ""}
-	${root.style.borderRadius != null ? "border-radius: " + String(root.style.borderRadius) + "px;" : ""}
-}
-
-#usi_close {
-	position: absolute;
-	left: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.x - root.bounds.x, root.bounds.width) : "95%"};
-	top: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.y - root.bounds.y, root.bounds.height) : "2%"};
-	width: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.width, root.bounds.width) : "3%"};
-	height: ${closeVisualNode ? (0, css_1.toPercent)(closeVisualNode.bounds.height, root.bounds.height) : "3%"};
-	z-index: 2000000300;
-	cursor: pointer;
-	padding: 0;
-	margin: 0;
-	display: block;
-	overflow: hidden;
-	text-indent: -9999px;
-	${flattenedBoxDeclarations(closeVisualNode || closeNode, frameScale, { background: "none", border: "none" }) || "background:none;border:none;"}
-}
-
-#usi_close::before {
-	content: "×";
-	position: absolute;
-	inset: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	text-indent: 0;
-	${flattenedTextDeclarations(closeVisualNode || closeNode, frameScale, {
-        background: "transparent",
-        border: "none",
-        "text-align": "center",
-        "line-height": "1"
-    }) || "background:transparent;border:none;text-align:center;line-height:1;"}
-}
-
-button#usi_close,
-button#usi_close:hover,
-button#usi_close:active,
-button#usi_close:focus {
-	cursor: pointer;
-}
-
-.usi_main {
-	position: absolute;
-	left: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.x - root.bounds.x, root.bounds.width) : "0%") : "0%"};
-	top: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.y - root.bounds.y, root.bounds.height) : "0%") : "0%"};
-	width: ${hasProducts || hasSummary ? (mainBounds ? (0, css_1.toPercent)(mainBounds.width, root.bounds.width) : "100%") : "100%"};
-	height: ${!hasProducts && !hasSummary ? "100%" : mainBounds ? (0, css_1.toPercent)(mainBounds.height, root.bounds.height) : "100%"};
-}
-
+${baseCss}
 ${textRegionCss}
-${hasProducts
-        ? `
-.usi_products {
-	position: absolute;
-	left: ${productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : "100%"};
-	min-height: ${productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : "0%"};
-	display: grid;
-	grid-template-columns: repeat(${productBounds && productBounds.width < productBounds.height * 0.9 ? 1 : gridColumns}, minmax(0, 1fr));
-	gap: ${productBounds && productGap ? (0, css_1.toPercent)(productGap, productBounds.width) : "2%"};
-	align-items: start;
-}
-
-.usi_product {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	gap: 0.75em;
-	padding: 0.9em;
-	min-width: 0;
-	${flattenedBoxDeclarations(firstProductCard, frameScale, {
-            width: "100%",
-            "max-width": "100%",
-            "min-width": "0"
-        }) || "width: 100%; max-width: 100%;"}
-}
-
-.usi_product_image {
-	position: relative;
-	display: block;
-	width: 100%;
-	overflow: hidden;
-	${flattenedBoxDeclarations(productImageNode, frameScale, { width: "100%" }) || "width: 100%;"}
-}
-
-.usi_product_image img {
-	display: block;
-	width: 100%;
-	height: 100%;
-	object-fit: contain;
-}
-
-.usi_product_body {
-	display: flex;
-	flex-direction: column;
-	gap: 0.35em;
-	min-width: 0;
-}
-
-.usi_product_subtitle {
-	margin: 0;
-	font-size: 0.9em;
-	${productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
-}
-
-.usi_product_title {
-	margin: 0;
-	white-space: pre-wrap;
-	${flattenedTextDeclarations(productTitleNode, frameScale, {
-            "white-space": "pre-wrap",
-            "background-color": "transparent",
-            border: "none"
-        }) || "font-weight: 700;"}
-}
-
-.usi_product_price {
-	margin: 0;
-	${flattenedTextDeclarations(productPriceNode, frameScale) || ""}
-}
-
-.usi_product_cta {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0.75em 1em;
-	${flattenedBoxDeclarations(productButtonNode, frameScale, {
-            display: "inline-flex",
-            "align-items": "center",
-            "justify-content": "center",
-            color: "#ffffff"
-        }) || "border: 1px solid currentColor; background: transparent; color:#ffffff;"}
-}
-
-${productCardCss}
-`
-        : ""}
-${hasSummary
-        ? `
-.usi_summary {
-	position: absolute;
-	left: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
-	top: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : "59%"};
-	width: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : "76%"};
-	padding: 1em;
-	display: flex;
-	flex-direction: column;
-	gap: 0.5em;
-	${flattenedBoxDeclarations(summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
-}
-
-.usi_summary_title {
-	margin: 0 0 0.5em;
-	white-space: pre-wrap;
-	${flattenedTextDeclarations(summaryNode, frameScale, {
-            "font-size": "1em",
-            "font-weight": 700,
-            "white-space": "pre-wrap"
-        }) || "font-weight: 700; font-size: 1em;"}
-}
-
-.usi_summary_row {
-	display: grid;
-	grid-template-columns: 1fr auto;
-	gap: 1em;
-	align-items: start;
-	font-size: 1em;
-}
-
-.usi_price {
-	${flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
-}
-
-.usi_discount {
-	${flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
-}
-
-.usi_new_price {
-	${flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
-}
-
-.usi_label,
-.usi_value {
-	font-size: 1em;
-}
-
-.usi_new_price .usi_value,
-.usi_discount .usi_value,
-.usi_new_price strong,
-.usi_discount strong {
-	font-weight: 700;
-}
-`
-        : ""}
 ${componentCss}
-${extraComponentsCss}
-.usi_submitbutton {
-	position: absolute;
-	left: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
-	top: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.y - root.bounds.y, root.bounds.height) : "77%"};
-	width: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.width, root.bounds.width) : "76%"};
-	min-height: ${ctaNode ? (0, css_1.toPercent)(ctaNode.bounds.height, root.bounds.height) : "15.5%"};
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	${flattenedBoxDeclarations(ctaNode, frameScale, {
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        "background-color": ctaNode && ctaNode.style.background ? ctaNode.style.background : "#1f1f1f",
-        color: ctaNode && ctaNode.style.color ? ctaNode.style.color : "#ffffff",
-        "text-align": ctaNode && ctaNode.style.textAlign ? ctaNode.style.textAlign : "center"
-    })}
-}
 `.trim();
     const js = `${buildPriceRuntimeSetup(hasSummary)}usi_js.click_cta = () => {
 	try {
@@ -4099,16 +4743,33 @@ ${extraComponentsCss}
 };
 
 usi_js.display_vars.p1_html = \`
-${(0, string_1.escapeTemplateString)(formatFlattenedHtml(formattedRuntimeContentHtml))}
+${(0, string_1.escapeTemplateString)(formatFlattenedHtml(contentHTML))}
 \`;
 `;
+    const html = `
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Preview</title>
+		<style>
+		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}.usi_display * {padding:0 0 0 0;margin:0 0 0 0;color:#000000;font-weight:normal;font-size:12pt;text-decoration:none;line-height:12pt;box-shadow: none;border: none; outline: none;text-align: left;font-family: Helvetica, Arial, sans-serif;float:none;} .usi_quickide_css {display:none;visibility:hidden;}#usi_close { position:absolute;left:85%;top:0px;width:15%;height:15%;z-index:2000000300;cursor:pointer;border:none;background:none;margin:0;padding:0; }
+button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { background:none;border:none;cursor:pointer; } #usi_content { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000200; } #usi_background { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000100; } #usi_page { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000150; } .usi_sr_only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+		${css}
+		</style>
+	</head>
+	<body>
+		${htmlDocumentBody}
+	</body>
+</html>
+`.trim();
     return {
         html: html,
         css: css,
         imageFileName: imageFileName,
         js: js,
-        contentHtml: previewContentHtml,
-        runtimeContentHtml: runtimeContentHtml
+        contentHTML: contentHTML
     };
 }
 function buildUsiJsFile(pages) {
@@ -4118,7 +4779,7 @@ function buildUsiJsFile(pages) {
     const assignments = pages
         .map(function (page) {
         return `usi_js.display_vars.${page.key}_html = \`
-${(0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.runtimeContentHtml || page.variant.contentHtml))}
+${(0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.contentHTML))}
 \`;
 `;
     })

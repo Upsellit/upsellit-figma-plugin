@@ -6,7 +6,7 @@ import {
   createAssetComponentInstance,
   getExportRoots,
 } from './figma/index';
-import { buildExport } from './packaging/index';
+import { buildExport } from './render/packaging';
 
 figma.showUI(__html__, {
   width: 440,

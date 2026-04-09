@@ -4,8 +4,9 @@
 node_modules
 .DS_Store
 
-out/
-dist/
-code.js
-upsellit-modal-templates/
-upsellit-modal-templates.zip
+# out/
+# dist/
+# code.js
+# upsellit-modal-templates/
+# upsellit-modal-templates.zip
+.vscode

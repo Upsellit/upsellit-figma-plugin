@@ -210,8 +210,7 @@ export type FlattenedVariant = {
   css: string;
   imageFileName: string;
   js: string;
-  contentHtml: string;
-  runtimeContentHtml: string;
+  contentHTML: string;
 };
 
 export type CommonComponentDefinition = {
@@ -246,3 +245,21 @@ export type CommonComponentDefinition = {
     };
   };
 };
+
+
+
+export interface ComponentRenderer {
+	renderHtml(
+		node: NormalizedNode | undefined,
+		definition: CommonComponentDefinition | undefined,
+		hideVisibleText: boolean,
+		context?: Record<string, unknown>
+	): string;
+	renderCss(
+		nodes: NormalizedNode[],
+		root: NormalizedNode,
+		frameScale: number,
+		context?: Record<string, unknown>
+	): string;
+	shouldRender(root: NormalizedNode): boolean;
+}

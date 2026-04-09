@@ -19,7 +19,7 @@ import {
   renderMultiExportIndex,
   renderMockupReviewIndex,
   renderPreviewIndex,
-} from '../render/index';
+} from './index';
 import { formatFileText } from '../utils/string';
 
 
