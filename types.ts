@@ -75,16 +75,47 @@ export type SizingMode = 'FIXED' | 'HUG' | 'FILL' | 'AUTO';
 export type PromoPattern = 'cart_recovery_split' | 'grid' | 'carousel' | 'single';
 export type PromoLayout = 'mobile' | 'desktop';
 
+export type LayoutAlign =
+  | 'MIN'
+  | 'CENTER'
+  | 'MAX'
+  | 'SPACE_BETWEEN'
+  | 'INHERIT'
+  | 'STRETCH';
+
 export type NodeLayout = {
   mode: LayoutKind;
   wrap: boolean;
+
+  // existing normalized fields
   gap: number;
-  padding: { top: number; right: number; bottom: number; left: number };
   primaryAlign: string;
   counterAlign: string;
+
+  // autolayout-compatible fields used by recursive renderer
+  itemSpacing?: number;
+  primaryAxisAlignItems?: LayoutAlign;
+  counterAxisAlignItems?: LayoutAlign;
+
+  padding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+
   widthMode: SizingMode;
   heightMode: SizingMode;
 };
+
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+export type TextCase =
+  | 'ORIGINAL'
+  | 'UPPER'
+  | 'LOWER'
+  | 'TITLE'
+  | 'SMALL_CAPS'
+  | 'SMALL_CAPS_FORCED';
 
 export type NodeStyle = {
   background?: string;
@@ -98,9 +129,9 @@ export type NodeStyle = {
   fontSize?: number;
   fontWeight?: number;
   lineHeight?: number;
-  textAlign?: string;
+  textAlign?: TextAlign | string;
   letterSpacing?: number;
-  textCase?: string;
+  textCase?: TextCase | string;
 };
 
 export type ThemeVariableSnapshot = {
@@ -115,6 +146,16 @@ export type NodeBounds = {
   y: number;
   width: number;
   height: number;
+};
+
+export type NodeMetadata = {
+  exportRole?: string;
+  exportComponent?: string;
+  exportCollection?: string;
+  exportIgnore?: string;
+  isMask?: boolean;
+  isVectorLike?: boolean;
+  sourceType?: string;
 };
 
 export type NormalizedNode = {
@@ -133,12 +174,7 @@ export type NormalizedNode = {
   children: NormalizedNode[];
   detectedRole?: ExportRole;
   roleConfidence?: number;
-  metadata: {
-    exportRole?: string;
-    exportComponent?: string;
-    exportCollection?: string;
-    exportIgnore?: string;
-  };
+  metadata: NodeMetadata;
 };
 
 export type Product = {
@@ -220,8 +256,6 @@ export type CommonComponentDefinition = {
   description: string;
   category: 'shell' | 'layout' | 'content' | 'product' | 'summary' | 'form' | 'action' | 'utility';
   render: {
-    // Keep export behavior close to the component definition so new
-    // components can usually be added without touching multiple render maps.
     htmlTag: string;
     className: string;
     region: 'shell' | 'main' | 'aside' | 'product' | 'summary' | 'utility';
@@ -246,20 +280,31 @@ export type CommonComponentDefinition = {
   };
 };
 
+export type RendererContext = Record<string, unknown>;
 
+export type RecursiveRenderContext = {
+  root: NormalizedNode;
+  frameScale: number;
+  hideVisibleText: boolean;
+  excludedIds: Set<string>;
+  productGridAnchorId?: string;
+  summaryAnchorId?: string;
+  productHtml?: string;
+  summaryHtml?: string;
+};
 
 export interface ComponentRenderer {
-	renderHtml(
-		node: NormalizedNode | undefined,
-		definition: CommonComponentDefinition | undefined,
-		hideVisibleText: boolean,
-		context?: Record<string, unknown>
-	): string;
-	renderCss(
-		nodes: NormalizedNode[],
-		root: NormalizedNode,
-		frameScale: number,
-		context?: Record<string, unknown>
-	): string;
-	shouldRender(root: NormalizedNode): boolean;
+  renderHtml(
+    node: NormalizedNode | undefined,
+    definition: CommonComponentDefinition | undefined,
+    hideVisibleText: boolean,
+    context?: RendererContext
+  ): string;
+  renderCss(
+    nodes: NormalizedNode[],
+    root: NormalizedNode,
+    frameScale: number,
+    context?: RendererContext
+  ): string;
+  shouldRender(root: NormalizedNode): boolean;
 }

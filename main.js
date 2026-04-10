@@ -144,7 +144,7 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "button",
         buttonText: "Redeem Now",
-        flattened: { liveText: true, textBaked: true }
+        flattened: { liveText: true, textBaked: false }
     }),
     component("thank_you_button", "Thank You Button", "cta", "Primary thank-you action for follow-up pages.", "action", {
         htmlTag: "button",
@@ -272,7 +272,7 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "optin",
         fallbackText: "Yes, send me updates and offers.",
-        flattened: { liveText: true, textBaked: true }
+        flattened: { liveText: true, textBaked: false }
     }),
     component("countdown_timer", "Countdown Timer", "countdown", "Urgency timer display.", "utility", {
         htmlTag: "div",
@@ -2585,7 +2585,7 @@ function renderMultiExportIndex(entries) {
   <main class="usi_export_root">
     <section class="usi_export_header">
       <h1>Export Index</h1>
-      <p>Preview each exported frame below.</p>
+      <p><button onclick='Array.from(document.querySelectorAll(".usi_export_open")).forEach(el => { const url = el.href || el.getAttribute("data-href"); if (url) window.open(url, "_blank"); });'>Open All</button></p>
     </section>
 
     <section class="usi_export_grid">
@@ -3066,6 +3066,7 @@ const constants_1 = require("../constants");
 const css_1 = require("../utils/css");
 const tree_1 = require("../utils/tree");
 const PRODUCT_PLACEHOLDER_IMAGE = "https://placehold.co/600x400/EEE/31343C";
+const INCLUDE_DEBUG_NODE_CLASSES = false;
 const COMPONENT_RENDERERS = {
     container: {
         renderHtml: (_node, definition) => {
@@ -3102,7 +3103,7 @@ const COMPONENT_RENDERERS = {
         shouldRender: () => true
     },
     media: {
-        renderHtml: (_node, definition) => {
+        renderHtml: (node, definition, hideVisibleText) => {
             if (!definition)
                 return "";
             const tag = definition.render.htmlTag;
@@ -3110,7 +3111,16 @@ const COMPONENT_RENDERERS = {
             if (tag === "hr") {
                 return `<hr class="${className}" />`;
             }
-            return `<div class="${className}" aria-hidden="true"></div>`;
+            if (hideVisibleText) {
+                return `<div class="${className}" aria-hidden="true"></div>`;
+            }
+            const altText = (0, string_1.escapeHtml)((node && componentText(node, definition)) || (node && node.name) || definition.label || "Image");
+            const imageSrc = PRODUCT_PLACEHOLDER_IMAGE;
+            return `
+			<div class="${className}">
+				<img src="${imageSrc}" alt="${altText}" />
+			</div>
+		`.trim();
         },
         renderCss: (nodes, root, frameScale) => {
             if (!nodes.length)
@@ -3122,12 +3132,19 @@ const COMPONENT_RENDERERS = {
                     return "";
                 return `
 .${definition.render.className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	height: ${(0, css_1.toPercent)(node.bounds.height, root.bounds.height)};
 	margin: 0;
+	display: block;
+	overflow: hidden;
 	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+.${definition.render.className} img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
 }
 `;
             })
@@ -3136,11 +3153,11 @@ const COMPONENT_RENDERERS = {
         shouldRender: () => true
     },
     input: {
-        renderHtml: (node, definition, hideVisibleText) => {
+        renderHtml: (node, definition) => {
             if (!node || !definition)
                 return "";
             const text = componentText(node, definition);
-            const placeholder = hideVisibleText ? "" : (0, string_1.escapeHtml)(text);
+            const placeholder = (0, string_1.escapeHtml)(text);
             return `
 			<label class="${definition.render.className}">
 				<span class="usi_field_label usi_sr_only">${(0, string_1.escapeHtml)(node.name || definition.label)}</span>
@@ -3159,9 +3176,6 @@ const COMPONENT_RENDERERS = {
                 const className = definition.render.className;
                 return `
 ${htmlToCssClassName(className)} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: flex;
 	flex-direction: column;
@@ -3213,9 +3227,6 @@ ${htmlToCssClassName(className)} .usi_field_input {
                 const className = definition ? definition.render.className : "usi_survey";
                 return `
 ${htmlToCssClassName(className)} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: flex;
 	flex-direction: column;
@@ -3271,9 +3282,6 @@ ${htmlToCssClassName(className)} .usi_survey_option {
                 const buttonNode = node.children[1];
                 return `
 ${htmlToCssClassName(className)} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: flex;
 	flex-wrap: wrap;
@@ -3324,9 +3332,6 @@ ${htmlToCssClassName(className)} .usi_coupon_button {
                 const className = definition ? definition.render.className : "usi_optin";
                 return `
 ${htmlToCssClassName(className)} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: flex;
 	gap: 0.625em;
@@ -3368,9 +3373,6 @@ ${htmlToCssClassName(className)} .usi_optin_label {
                 const className = definition ? definition.render.className : "usi_countdown";
                 return `
 ${htmlToCssClassName(className)} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: inline-flex;
 	padding: 0.625em 0.875em;
@@ -3402,9 +3404,6 @@ ${htmlToCssClassName(className)} {
                 const className = definition ? definition.render.className : "usi_progress";
                 return `
 ${htmlToCssClassName(className)} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	height: 0.75em;
 	${flattenedBoxDeclarations(node, frameScale)}
@@ -3442,9 +3441,6 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
                     return "";
                 return `
 .${definition.render.className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	margin: 0;
 	white-space: pre-wrap;
@@ -3475,9 +3471,6 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
                     return "";
                 return `
 .${definition.render.className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	margin: 0;
 	font-size: 0.9em;
@@ -3508,9 +3501,6 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
                     return "";
                 return `
 .${definition.render.className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	margin: 0;
 	${flattenedTextDeclarations(node, frameScale)}
@@ -3539,9 +3529,6 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
                     return "";
                 return `
 .${definition.render.className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: inline-flex;
 	align-items: center;
@@ -3577,9 +3564,6 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
                     return "";
                 return `
 .${definition.render.className} {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	height: ${(0, css_1.toPercent)(node.bounds.height, root.bounds.height)};
 	display: block;
@@ -3728,9 +3712,6 @@ ${imageRule}
                 .join("");
             return `
 .usi_products {
-	position: absolute;
-	left: ${productBounds ? (0, css_1.toPercent)(productBounds.x - root.bounds.x, root.bounds.width) : "12%"};
-	top: ${productBounds ? (0, css_1.toPercent)(productBounds.y - root.bounds.y, root.bounds.height) : "59%"};
 	width: ${productBounds ? (0, css_1.toPercent)(productBounds.width, root.bounds.width) : "76%"};
 	min-height: ${productBounds ? (0, css_1.toPercent)(productBounds.height, root.bounds.height) : "0%"};
 	display: grid;
@@ -3750,21 +3731,20 @@ ${imageRule}
 	align-items: stretch;
 	gap: 0.75em;
 	padding: 0.9em;
-	width: ${firstCardWidth && productBounds && gridColumns && gridColumns > 1
-                ? (0, css_1.toPercent)(firstCardWidth, productBounds.width)
-                : "100%"};
+	width: 100%;
 	max-width: 100%;
 	min-width: 0;
 	min-height: 0;
 	margin: 0 auto;
 	box-sizing: border-box;
- 	${flattenedBoxDeclarations(firstProductCard, frameScale, {
+	${flattenedBoxDeclarations(firstProductCard, frameScale, {
                 width: firstCardWidth && productBounds && gridColumns && gridColumns > 1
                     ? (0, css_1.toPercent)(firstCardWidth, productBounds.width)
                     : "100%",
                 "max-width": "100%",
                 "min-width": "0"
             }) || "width: 100%; max-width: 100%; min-width: 0;"}
+}
 
 .usi_product_image {
 	position: relative;
@@ -3772,6 +3752,8 @@ ${imageRule}
 	width: 100%;
 	min-width: 0;
 	overflow: hidden;
+	margin: auto;
+	max-width: 250px;
 	${imageAspectRatio ? `aspect-ratio: ${imageAspectRatio};` : ""}
 	${flattenedBoxDeclarations(productImageNode, frameScale, {
                 width: "100%",
@@ -3836,11 +3818,11 @@ ${imageRule}
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	max-width: 100%;
 	align-self: flex-start;
 	width: auto;
 	max-width: 100%;
 	padding: 0.75em 1em;
+	margin: auto;
 	${flattenedBoxDeclarations(productButtonNode, frameScale, {
                 display: "inline-flex",
                 "align-items": "center",
@@ -3871,9 +3853,6 @@ ${productCardCss}
             const summaryTotalNode = context ? context.summaryTotalNode : undefined;
             return `
 .usi_summary {
-	position: absolute;
-	left: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
-	top: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.y - root.bounds.y, root.bounds.height) : "59%"};
 	width: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : "76%"};
 	padding: 1em;
 	display: flex;
@@ -3941,9 +3920,6 @@ ${productCardCss}
             const node = nodes[0];
             return `
 .usi_secondary_cta {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: inline-flex;
 	align-items: center;
@@ -3960,9 +3936,8 @@ ${productCardCss}
         renderHtml: (node, definition) => {
             if (!node || !definition)
                 return "";
-            const text = componentText(node, definition);
             const className = definition.render.className;
-            return `<p class="${className}">${(0, string_1.escapeHtml)(text)}</p>`;
+            return `<p class="${className}">We use your information in accordance with our <a href="https://labs.upsellit.com/privacy-policy" target="_blank">privacy policy</a>.</p>`;
         },
         renderCss: (nodes, root, frameScale) => {
             if (!nodes.length)
@@ -3970,14 +3945,18 @@ ${productCardCss}
             const node = nodes[0];
             return `
 .usi_disclaimer {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
+	width: 100%;
 	margin: 0;
 	font-size: 0.875em;
 	line-height: 1.4;
+	text-align: center;
+	margin: auto;
 	${flattenedTextDeclarations(node, frameScale)}
+}
+.usi_disclaimer a {
+	font-weight: bold;
+	text-decoration: underline;
 }
 `;
         },
@@ -3998,9 +3977,6 @@ ${productCardCss}
                 return "";
             return `
 .usi_headline {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - mainBounds.x, mainBounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - mainBounds.y, mainBounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
 	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
 }
@@ -4023,9 +3999,6 @@ ${productCardCss}
                 return "";
             return `
 .usi_eyebrow {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - mainBounds.x, mainBounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - mainBounds.y, mainBounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
 	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
 }
@@ -4048,9 +4021,6 @@ ${productCardCss}
                 return "";
             return `
 .usi_subtext {
-	position: absolute;
-	left: ${(0, css_1.toPercent)(node.bounds.x - mainBounds.x, mainBounds.width)};
-	top: ${(0, css_1.toPercent)(node.bounds.y - mainBounds.y, mainBounds.height)};
 	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
 	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
 }
@@ -4074,9 +4044,6 @@ ${productCardCss}
             const node = nodes[0];
             return `
 .usi_submitbutton {
-	position: absolute;
-	left: ${node ? (0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width) : "12%"};
-	top: ${node ? (0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height) : "77%"};
 	width: ${node ? (0, css_1.toPercent)(node.bounds.width, root.bounds.width) : "76%"};
 	min-height: ${node ? (0, css_1.toPercent)(node.bounds.height, root.bounds.height) : "15.5%"};
 	display: flex;
@@ -4202,92 +4169,37 @@ button#usi_close:focus {
 	${root.layout && root.layout.padding ? "padding: " + root.layout.padding.top + "px " + root.layout.padding.right + "px " + root.layout.padding.bottom + "px " + root.layout.padding.left + "px;" : ""}
 	${root.style.borderRadius != null ? "border-radius: " + String(root.style.borderRadius) + "px;" : ""}
 }
-`;
-        },
-        shouldRender: () => true
-    },
-    content_layout: {
-        renderHtml: (_node, _definition, _hideVisibleText, context) => {
-            const eyebrowHtml = String((context && context.eyebrowHtml) || "");
-            const headlineHtml = String((context && context.headlineHtml) || "");
-            const subtextHtml = String((context && context.subtextHtml) || "");
-            const ctaHtml = String((context && context.ctaHtml) || "");
-            const flattenedExtraMainHtml = String((context && context.flattenedExtraMainHtml) || "");
-            const flattenedExtraUtilityHtml = String((context && context.flattenedExtraUtilityHtml) || "");
-            const extraComponentsHtml = String((context && context.extraComponentsHtml) || "");
-            return `
-<section class="usi_main">
-	${eyebrowHtml}
-	${headlineHtml}
-	${subtextHtml}
-	${ctaHtml}
-	${flattenedExtraMainHtml}
-	${flattenedExtraUtilityHtml}
-	${extraComponentsHtml}
-</section>
-			`.trim();
-        },
-        renderCss: (_nodes, root, _frameScale, context) => {
-            const hasProducts = !!(context && context.hasProducts);
-            const hasSummary = !!(context && context.hasSummary);
-            const mainBounds = context ? context.mainBounds : undefined;
-            const left = hasProducts || hasSummary
-                ? mainBounds
-                    ? (0, css_1.toPercent)(mainBounds.x - root.bounds.x, root.bounds.width)
-                    : "0%"
-                : "0%";
-            const top = hasProducts || hasSummary
-                ? mainBounds
-                    ? (0, css_1.toPercent)(mainBounds.y - root.bounds.y, root.bounds.height)
-                    : "0%"
-                : "0%";
-            const width = hasProducts || hasSummary
-                ? mainBounds
-                    ? (0, css_1.toPercent)(mainBounds.width, root.bounds.width)
-                    : "100%"
-                : "100%";
-            const height = !hasProducts && !hasSummary
-                ? "100%"
-                : mainBounds
-                    ? (0, css_1.toPercent)(mainBounds.height, root.bounds.height)
-                    : "100%";
-            return `
-.usi_main {	
-    position: relative;
-    height: 100%;
-	/*position: absolute;*/
-	/*left: ${left};*/
-	/*top: ${top};*/
-	/*width: ${width};*/
-	/*height: ${height};*/
-	min-width: 0;
-	box-sizing: border-box;
+.usi_display img:after {
+	content: "Image Not Available";
 	display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
+	text-align: center;
+	align-items: center;
+	justify-content: center;
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: #f0f0f0;
+	border: 1px solid #ccc;
+	color: #666;
 }
+.usi_modal_inner {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	height: 100%;
+	flex: auto;
+}
+	
 `;
         },
-        shouldRender: () => true
-    },
-    aside_layout: {
-        renderHtml: (_node, _definition, _hideVisibleText, context) => {
-            const hasProducts = !!(context && context.hasProducts);
-            const flattenedExtraAsideHtml = String((context && context.flattenedExtraAsideHtml) || "");
-            const productHtml = String((context && context.productHtml) || "");
-            if (!hasProducts && !flattenedExtraAsideHtml)
-                return "";
-            return `
-	${hasProducts ? productHtml : ""}
-	${flattenedExtraAsideHtml}
-			`.trim();
-        },
-        renderCss: () => "",
         shouldRender: () => true
     }
 };
-function generateProductGridHtml(products, hideVisibleText) {
+function generateProductGridHtml(products) {
     if (!products.length)
         return "";
     return products
@@ -4301,14 +4213,12 @@ function generateProductGridHtml(products, hideVisibleText) {
             return "";
         return `
 				<article class="usi_product_card usi_product usi_product${index + 1}">
-					${!hideVisibleText
-            ? `<div class="usi_product_image">
-								<img
-									src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
-									alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}"
-								/>
-							</div>`
-            : ""}
+					<div class="usi_product_image">
+						<img
+							src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
+							alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}"
+						/>
+					</div>
 					<div class="usi_product_body">
 						<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle}')}</h3>
 						${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
@@ -4434,32 +4344,16 @@ function componentDefinitionForNode(node) {
     if (node.componentOverride && constants_1.COMPONENT_BY_ID[node.componentOverride]) {
         return constants_1.COMPONENT_BY_ID[node.componentOverride];
     }
-    return constants_1.COMPONENT_BY_ROLE[node.detectedRole || node.roleOverride || "other"];
+    const role = node.detectedRole || node.roleOverride;
+    if (!role || role === "other")
+        return undefined;
+    return constants_1.COMPONENT_BY_ROLE[role];
 }
 function componentText(node, definition) {
     const text = (0, tree_1.collectText)(node) || node.text || node.name || "";
     if (text)
         return text;
     return definition && definition.render.fallbackText ? definition.render.fallbackText : "";
-}
-function renderExtraRegionNodes(root, region, excludedIds, hideVisibleText) {
-    const rendered = [];
-    (function walk(node) {
-        if (node.ignored || excludedIds.indexOf(node.id) !== -1)
-            return;
-        const definition = componentDefinitionForNode(node);
-        if (definition && definition.id === "content_stack")
-            return;
-        const shouldRenderNode = !!definition && definition.render.region === region;
-        if (shouldRenderNode) {
-            rendered.push(renderExplicitComponentNode(node, hideVisibleText || false));
-            return;
-        }
-        for (let index = 0; index < node.children.length; index += 1) {
-            walk(node.children[index]);
-        }
-    })(root);
-    return rendered.join("");
 }
 function combineBounds(nodes) {
     const filtered = nodes.filter(Boolean);
@@ -4499,7 +4393,7 @@ function flattenedTextDeclarations(node, frameScale, extra) {
         return "";
     return (0, css_1.cssDeclarations)(Object.assign({
         color: node.style.color,
-        opacity: node.style.opacity,
+        opacity: node.style.opacity !== 1 ? node.style.opacity : "",
         "font-family": node.style.fontFamily
             ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
             : undefined,
@@ -4523,8 +4417,8 @@ function flattenedBoxDeclarations(node, frameScale, extra) {
         border: node.style.borderColor
             ? String(node.style.borderWidth || 1) + "px solid " + node.style.borderColor
             : undefined,
-        "border-radius": node.style.borderRadius != null ? String(node.style.borderRadius) + "px" : undefined,
-        opacity: node.style.opacity,
+        "border-radius": node.style.borderRadius ? String(node.style.borderRadius) + "px" : undefined,
+        opacity: node.style.opacity !== 1 ? node.style.opacity : "",
         "font-family": node.style.fontFamily
             ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
             : undefined,
@@ -4544,7 +4438,6 @@ function findDescendantRoleNode(root, role) {
         return undefined;
     return (0, tree_1.pickBestNode)((0, tree_1.findNodesByRole)(root, role, 0.1));
 }
-// --- Standalone role detection helpers ---
 function findStandaloneRoleNode(root, role, excludedAncestorIds = []) {
     return (0, tree_1.pickBestNode)((0, tree_1.findNodesByRole)(root, role, 0.35).filter(function (node) {
         return !excludedAncestorIds.some(function (ancestorId) {
@@ -4613,6 +4506,556 @@ function formatFlattenedHtml(html) {
     })
         .join("\n");
 }
+function byVisualOrder(a, b) {
+    if (Math.abs(a.bounds.y - b.bounds.y) > 2)
+        return a.bounds.y - b.bounds.y;
+    if (Math.abs(a.bounds.x - b.bounds.x) > 2)
+        return a.bounds.x - b.bounds.x;
+    return a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height;
+}
+function isRenderableNode(node) {
+    return !!node && !node.ignored && node.visible;
+}
+function shouldSkipRecursiveNode(node, excludedIds) {
+    return !isRenderableNode(node) || excludedIds.has(node.id);
+}
+function isContainerLikeNode(node) {
+    if (node.children.length > 0)
+        return true;
+    if (node.type === "FRAME" || node.type === "GROUP" || node.type === "INSTANCE" || node.type === "COMPONENT") {
+        return true;
+    }
+    return false;
+}
+function hasAutoLayout(node) {
+    return !!(node.layout &&
+        (node.layout.mode === "HORIZONTAL" ||
+            node.layout.mode === "VERTICAL" ||
+            node.layout.primaryAxisAlignItems ||
+            node.layout.counterAxisAlignItems));
+}
+function containerTagForNode(_node) {
+    return "div";
+}
+function layoutDirection(node) {
+    return node.layout && node.layout.mode === "HORIZONTAL" ? "row" : "column";
+}
+function autoLayoutDeclarations(node, frameScale) {
+    if (!hasAutoLayout(node))
+        return "";
+    const gap = node.layout && node.layout.itemSpacing != null ? (0, css_1.pxToEm)(node.layout.itemSpacing, 16, frameScale) : undefined;
+    const padding = node.layout && node.layout.padding
+        ? `${(0, css_1.pxToEm)(node.layout.padding.top || 0, 16, frameScale)} ${(0, css_1.pxToEm)(node.layout.padding.right || 0, 16, frameScale)} ${(0, css_1.pxToEm)(node.layout.padding.bottom || 0, 16, frameScale)} ${(0, css_1.pxToEm)(node.layout.padding.left || 0, 16, frameScale)}`
+        : undefined;
+    const alignItems = node.layout && node.layout.counterAxisAlignItems === "CENTER"
+        ? "center"
+        : node.layout && node.layout.counterAxisAlignItems === "MAX"
+            ? "flex-end"
+            : node.layout && node.layout.counterAxisAlignItems === "MIN"
+                ? "flex-start"
+                : undefined;
+    const justifyContent = node.layout && node.layout.primaryAxisAlignItems === "CENTER"
+        ? "center"
+        : node.layout && node.layout.primaryAxisAlignItems === "MAX"
+            ? "flex-end"
+            : node.layout && node.layout.primaryAxisAlignItems === "SPACE_BETWEEN"
+                ? "space-between"
+                : node.layout && node.layout.primaryAxisAlignItems === "MIN"
+                    ? "flex-start"
+                    : undefined;
+    return (0, css_1.cssDeclarations)({
+        display: "flex",
+        "flex-direction": layoutDirection(node),
+        gap,
+        padding,
+        "align-items": alignItems,
+        "justify-content": justifyContent
+    });
+}
+function joinClassNames(...values) {
+    return values.filter(Boolean).join(" ");
+}
+function recursiveClassName(node) {
+    if (!INCLUDE_DEBUG_NODE_CLASSES)
+        return "";
+    return `usi_node usi_node_${node.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+function renderGenericLeafNode(node) {
+    const className = joinClassNames(recursiveClassName(node));
+    const text = (0, tree_1.collectText)(node).trim();
+    if (text) {
+        return (0, string_1.escapeHtml)(text);
+        //return className ? `<div class="${className}">${escapeHtml(text)}</div>` : `<div>${escapeHtml(text)}</div>`;
+    }
+    if (node.type === "LINE") {
+        return className ? `<hr class="${className}" />` : `<hr />`;
+    }
+    return className ? `<div class="${className}" aria-hidden="true"></div>` : `<div aria-hidden="true"></div>`;
+}
+function inlineLayoutStyles(node, frameScale) {
+    if (!hasAutoLayout(node))
+        return "";
+    const styles = {
+        display: "flex",
+        "flex-direction": layoutDirection(node),
+        gap: node.layout && node.layout.itemSpacing != null
+            ? (0, css_1.pxToEm)(node.layout.itemSpacing, 16, frameScale)
+            : undefined,
+        padding: node.layout && node.layout.padding
+            ? `${(0, css_1.pxToEm)(node.layout.padding.top || 0, 16, frameScale)} ${(0, css_1.pxToEm)(node.layout.padding.right || 0, 16, frameScale)} ${(0, css_1.pxToEm)(node.layout.padding.bottom || 0, 16, frameScale)} ${(0, css_1.pxToEm)(node.layout.padding.left || 0, 16, frameScale)}`
+            : undefined,
+        "align-items": node.layout && node.layout.counterAxisAlignItems === "CENTER"
+            ? "center"
+            : node.layout && node.layout.counterAxisAlignItems === "MAX"
+                ? "flex-end"
+                : node.layout && node.layout.counterAxisAlignItems === "MIN"
+                    ? "flex-start"
+                    : undefined,
+        "justify-content": node.layout && node.layout.primaryAxisAlignItems === "CENTER"
+            ? "center"
+            : node.layout && node.layout.primaryAxisAlignItems === "MAX"
+                ? "flex-end"
+                : node.layout && node.layout.primaryAxisAlignItems === "SPACE_BETWEEN"
+                    ? "space-between"
+                    : node.layout && node.layout.primaryAxisAlignItems === "MIN"
+                        ? "flex-start"
+                        : undefined
+    };
+    return (0, css_1.cssDeclarations)(styles);
+}
+// function inlinePositionStyles(
+// 	node: NormalizedNode,
+// 	root: NormalizedNode,
+// 	options?: { includeHeight?: boolean }
+// ): string {
+// 	return cssDeclarations({
+// 		position: "absolute",
+// 		left: toPercent(node.bounds.x - root.bounds.x, root.bounds.width),
+// 		top: toPercent(node.bounds.y - root.bounds.y, root.bounds.height),
+// 		width: "100%",//toPercent(node.bounds.width, root.bounds.width),
+// 		height: options && options.includeHeight ? toPercent(node.bounds.height, root.bounds.height) : undefined
+// 	});
+// }
+function collectRecursiveCss(node, root, frameScale, excludedIds) {
+    if (shouldSkipRecursiveNode(node, excludedIds))
+        return "";
+    const definition = componentDefinitionForNode(node);
+    if (definition) {
+        return "";
+    }
+    const className = recursiveClassName(node);
+    if (!className) {
+        return node.children
+            .map(function (child) {
+            return collectRecursiveCss(child, root, frameScale, excludedIds);
+        })
+            .join("");
+    }
+    const safeSelector = "." + className.split(" ").join(".");
+    const hasText = !!(0, tree_1.collectText)(node).trim();
+    const isLeaf = !node.children.length;
+    const nodeCss = `
+${safeSelector} {
+	position: relative;
+	box-sizing: border-box;
+	min-width: 0;
+	${hasAutoLayout(node) ? autoLayoutDeclarations(node, frameScale) : ""}
+	${flattenedBoxDeclarations(node, frameScale)}
+	${hasText ? flattenedTextDeclarations(node, frameScale) : ""}
+	${!isLeaf ? "" : ""}
+}
+`;
+    const childrenCss = node.children
+        .map(function (child) {
+        return collectRecursiveCss(child, root, frameScale, excludedIds);
+    })
+        .join("");
+    return nodeCss + childrenCss;
+}
+function renderRecursiveNode(node, context) {
+    if (shouldSkipRecursiveNode(node, context.excludedIds))
+        return "";
+    const overrideHtml = context.explicitOverrideHtmlById ? context.explicitOverrideHtmlById.get(node.id) : undefined;
+    if (overrideHtml != null) {
+        return overrideHtml;
+    }
+    if (context.productGridAnchorId && node.id === context.productGridAnchorId) {
+        return renderComponentByKey("product_grid", node, constants_1.COMPONENT_BY_ID.product_grid, context.hideVisibleText, {
+            productHtml: context.productHtml || ""
+        });
+    }
+    if (context.summaryAnchorId && node.id === context.summaryAnchorId) {
+        return renderComponentByKey("price_table", node, constants_1.COMPONENT_BY_ID.price_table, context.hideVisibleText, {
+            summaryHtml: context.summaryHtml || ""
+        });
+    }
+    const definition = componentDefinitionForNode(node);
+    const childrenHtml = node.children
+        .map(function (child) {
+        return renderRecursiveNode(child, context);
+    })
+        .filter(Boolean)
+        .join("");
+    if (definition) {
+        const isContainerDefinition = definition.render.kind === "container" ||
+            definition.id === "content_stack" ||
+            definition.role === "content";
+        if (isContainerDefinition) {
+            const tag = definition.render.htmlTag || "div";
+            const className = definition.render.className;
+            const inlineStyle = [
+                //inlinePositionStyles(node, context.root),
+                inlineLayoutStyles(node, context.frameScale),
+                flattenedBoxDeclarations(node, context.frameScale)
+            ]
+                .filter(Boolean)
+                .join("");
+            return `<${tag} class="${className}"${inlineStyle ? ` style="${inlineStyle}"` : ""}>${childrenHtml}</${tag}>`;
+        }
+        return renderExplicitComponentNode(node, context.hideVisibleText);
+    }
+    if (isContainerLikeNode(node)) {
+        const tag = containerTagForNode(node);
+        const className = recursiveClassName(node);
+        const inlineStyle = [
+            //inlinePositionStyles(node, context.root),
+            inlineLayoutStyles(node, context.frameScale),
+            flattenedBoxDeclarations(node, context.frameScale)
+        ]
+            .filter(Boolean)
+            .join("");
+        return `<${tag} class="${className}"${inlineStyle ? ` style="${inlineStyle}"` : ""}>${childrenHtml}</${tag}>`;
+    }
+    return renderGenericLeafNode(node);
+}
+// function detectEnabledFeatures(args: {
+// 	hasSummary: boolean;
+// 	hasProducts: boolean;
+// 	productCardNodes: NormalizedNode[];
+// 	runtimeProducts: Array<{ title?: string; subtitle?: string; price?: string; cta?: string }>;
+// 	emailInputNodes: NormalizedNode[];
+// 	phoneInputNodes: NormalizedNode[];
+// 	surveyNodes: NormalizedNode[];
+// 	countdownNodes: NormalizedNode[];
+// 	progressBarNodes: NormalizedNode[];
+// 	copyCouponNodes: NormalizedNode[];
+// 	optinNodes: NormalizedNode[];
+// }): EnabledFeatures {
+// 	const productCount = Math.max(args.productCardNodes.length, args.runtimeProducts.length);
+// 	return {
+// 		hasSummary: args.hasSummary,
+// 		hasProducts: args.hasProducts,
+// 		hasSingleProduct: args.hasProducts && productCount === 1,
+// 		hasMultiProduct: args.hasProducts && productCount > 1,
+// 		hasRecommendations: args.hasProducts && productCount >= 3 && !args.hasSummary,
+// 		hasEmailInput: args.emailInputNodes.length > 0,
+// 		hasPhoneInput: args.phoneInputNodes.length > 0,
+// 		hasSurvey: args.surveyNodes.length > 0,
+// 		hasCountdown: args.countdownNodes.length > 0,
+// 		hasProgress: args.progressBarNodes.length > 0,
+// 		hasCoupon: args.copyCouponNodes.length > 0,
+// 		hasOptin: args.optinNodes.length > 0
+// 	};
+// }
+function buildDefaultClickCtaJs() {
+    return `usi_js.click_cta = function(){
+	try {
+		usi_js.deep_link();
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};`;
+}
+function buildSingleProductJs() {
+    return `try {
+	usi_js.product = {};
+	usi_js.product.image = usi_cookies.get("usi_prod_image_1");
+	usi_js.product.name = usi_cookies.get("usi_prod_name_1");
+	usi_js.product.price = usi_cookies.get("usi_prod_price_1");
+	usi_js.product.discount = (Number(usi_js.product.price) * 0.10).toFixed(2);
+	usi_js.product.new_price = (Number(usi_js.product.price) - Number(usi_js.product.discount)).toFixed(2);
+
+	if (isNaN(Number(usi_js.product.discount))) throw new Error("discount is NaN");
+	if (isNaN(Number(usi_js.product.new_price))) throw new Error("new_price is NaN");
+} catch (err) {
+	usi_commons.report_error(err);
+	usi_js.launch.enabled = false;
+	usi_js.launch.suppress = true;
+}`;
+}
+function buildMultiProductSummaryJs() {
+    return `try {
+	usi_js.product = {};
+	usi_js.product.subtotal = usi_cookies.get("usi_subtotal");
+	usi_js.product.discount = (Number(usi_js.product.subtotal) * 0.15).toFixed(2);
+	usi_js.product.new_price = (Number(usi_js.product.subtotal) - Number(usi_js.product.discount)).toFixed(2);
+
+	if (isNaN(Number(usi_js.product.subtotal))) throw new Error("subtotal is NaN");
+	if (isNaN(Number(usi_js.product.discount))) throw new Error("discount is NaN");
+	if (isNaN(Number(usi_js.product.new_price))) throw new Error("new_price is NaN");
+} catch (err) {
+	usi_commons.report_error(err);
+	usi_js.launch.enabled = false;
+	usi_js.launch.suppress = true;
+}`;
+}
+function buildEmailCaptureJs() {
+    return `usi_js.click_cta = function(){
+	try {
+		if (usi_js.post_close == usi_js.click_cta) {
+			usi_js.post_close = function() {};
+		}
+		usi_js.deep_link();
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};
+
+usi_js.submit_success = function() {
+	usi_js.post_close = usi_js.click_cta;
+};`;
+}
+function buildPhoneCaptureJs() {
+    return `usi_js.click_cta = function(){
+	try {
+		if (usi_js.post_close == usi_js.click_cta) {
+			usi_js.post_close = function() {};
+		}
+		usi_js.deep_link();
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};
+
+usi_js.submit_success = function() {
+	usi_js.phone.send_data();
+	usi_js.post_close = usi_js.click_cta;
+};
+
+usi_js.post_display = function(){
+	if (!usi_js.timers.verify_phone_loop_id) {
+		usi_js.timers.verify_phone_loop_id = setTimeout(usi_js.phone.verify_phone_loop, 1000);
+	}
+};
+
+usi_js.phone = {
+	send_data: function(){
+		try {
+			var chars = "abcdefghjkmnpqrstuvwxyz23456789";
+			var string_length = 7;
+			var randomstring = '';
+			for (var i=0; i<string_length; i++) {
+				var rnum = Math.floor(Math.random() * chars.length);
+				randomstring += chars.substring(rnum,rnum+1);
+			}
+			usi_js.send_data("usi_short_code", randomstring);
+			usi_js.send_data("usi_phone", document.getElementById("usi_phone").value);
+		} catch(err) {
+			usi_commons.report_error(err);
+		}
+	},
+	submit: function() {
+		try {
+			var num = document.getElementById("usi_phone").value.replace(/\\D/g,'');
+			if (num.length === 10) {
+				usi_js.submit();
+			} else {
+				alert("Please enter a valid phone number");
+			}
+		} catch(err) {
+			usi_commons.report_error(err);
+		}
+	},
+	format: function(usi_phone){
+		try {
+			var input = usi_phone.value;
+			input = input.replace(/\\D/g,'');
+			input = input.substring(0,10);
+			var size = input.length;
+			if (size == 0){
+				input = input;
+			} else if (size < 4) {
+				input = '('+input;
+			} else if (size < 7) {
+				input = '('+input.substring(0,3)+') '+input.substring(3,6);
+			} else {
+				input = '('+input.substring(0,3)+') '+input.substring(3,6)+' - '+input.substring(6,10);
+			}
+			usi_phone.value = input;
+		} catch(err) {
+			usi_commons.report_error(err);
+		}
+	},
+	verify_phone_loop: function() {
+		try {
+			if (document.getElementById("usi_phone") != null) {
+				var phoneInput = document.getElementById("usi_phone");
+				var phone = phoneInput.value;
+				if (usi_js.page_status.phone_last != phone && phone != phoneInput.title) {
+					usi_js.page_status.phone_last = phone;
+					usi_js.phone.verify_loop_result(usi_js.phone.validate(phone.trim()));
+				}
+				return;
+			}
+			setTimeout(usi_js.phone.verify_phone_loop, 1000);
+		} catch(err) {
+			usi_commons.report_error(err);
+		}
+	},
+	verify_loop_result: function(isokay) {
+		try {
+			var phoneCheck = document.getElementById("usi_phone_good");
+			if (phoneCheck != null) {
+				if (!isokay) {
+					phoneCheck.src = usi_js.campaign.images + usi_js.display_vars.emailerror;
+				} else {
+					phoneCheck.src = usi_js.campaign.images + usi_js.display_vars.emailsuccess;
+				}
+			}
+		} catch(err) {
+			usi_commons.report_error(err);
+		}
+	},
+	validate: function() {
+		return document.getElementById("usi_phone").value.length == 16;
+	}
+};`;
+}
+function buildSurveyJs() {
+    return `usi_js.click_cta = function(){
+	try {
+		if (usi_js.post_close == usi_js.click_cta) {
+			usi_js.post_close = function() {};
+		}
+		usi_js.deep_link();
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};
+
+usi_js.submit_success = function() {
+	usi_js.post_close = usi_js.click_cta;
+};
+
+usi_js.survey_post = function(data) {
+	var qs = "?chatID=" + usi_js.campaign.id + "&questionID=" + data.questionID + "&freetype=" + data.freetype;
+	qs += "&siteID=" + usi_js.campaign.site_id + "&configurationID=" + usi_js.campaign.config_id;
+	qs += "&question=" + encodeURIComponent(encodeURIComponent(data.question));
+	qs += "&answer=" + encodeURIComponent(encodeURIComponent(JSON.stringify(data.answer)));
+	usi_js.load_js("active/survey_post.jsp" + qs);
+};
+
+usi_js.survey_submit = function() {
+	try {
+		var required_fields_not_answered = document.querySelectorAll('input[name="question1"]:checked').length === 0;
+		if (required_fields_not_answered) {
+			alert("Please select an answer.");
+			return;
+		}
+		usi_js.survey_post({
+			questionID: "1",
+			question: "QUESTION_GOES_HERE",
+			answer: document.querySelector('input[name="question1"]:checked').value,
+			freetype: "0"
+		});
+		usi_js.load_page(2);
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};`;
+}
+function buildCouponJs() {
+    return `usi_js.promo_callback = function(usi_promo){
+	usi_js.trace('promo_callback(' + usi_promo + ')');
+	usi_cookies.set("usi_coupon", usi_promo, usi_cookies.expire_time.day, true);
+	if (typeof usi_app.cms_client.autoApply != "undefined") {
+		usi_app.cms_client.autoApply(usi_js.campaign.coupon, "Auto applied");
+	}
+	usi_js.link();
+};
+
+usi_js.click_cta = function(){
+	try {
+		if (typeof usi_app.cms_client.autoApply != "undefined") {
+			usi_app.cms_client.autoApply(usi_js.campaign.coupon, "Auto applied");
+		}
+		usi_js.set_coupon();
+		usi_js.deep_link();
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};`;
+}
+function buildProgressOptinJs() {
+    return `try {
+	usi_js.product = {};
+	usi_js.product.total = usi_cookies.get("usi_subtotal");
+} catch (err) {
+	usi_commons.report_error(err);
+	usi_js.launch.enabled = false;
+	usi_js.launch.suppress = true;
+}
+
+usi_js.threshold = 50;
+
+usi_js.pre_display = function(){
+	try {
+		var usi_progress_made = document.getElementById("usi_progress_made");
+		var usi_togo = document.getElementById("usi_togo");
+		var total = String(usi_js.product.total || "").replace("$", "");
+		var perc = (total / usi_js.threshold) * 100;
+		var togo = Math.max(Math.ceil(usi_js.threshold - total), 0);
+
+		if (usi_progress_made) {
+			usi_progress_made.style.width = Math.min(perc, 100) + "%";
+			if (togo == 0) {
+				usi_progress_made.textContent = "YOU QUALIFY!";
+				return true;
+			}
+		}
+		if (usi_togo) usi_togo.textContent = Math.max(Math.ceil(usi_js.threshold - total), 0);
+		return true;
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};
+
+usi_js.click_cta = function(){
+	try {
+		usi_js.deep_link();
+	} catch(err) {
+		usi_commons.report_error(err);
+	}
+};`;
+}
+function buildFeatureJs(features) {
+    const parts = [];
+    if (features.hasSingleProduct && !features.hasSummary) {
+        parts.push(buildSingleProductJs());
+    }
+    if (features.hasMultiProduct && features.hasSummary) {
+        parts.push(buildMultiProductSummaryJs());
+    }
+    if (features.hasCoupon) {
+        parts.push(buildCouponJs());
+    }
+    else if (features.hasSurvey) {
+        parts.push(buildSurveyJs());
+    }
+    else if (features.hasPhoneInput) {
+        parts.push(buildPhoneCaptureJs());
+    }
+    else if (features.hasEmailInput) {
+        parts.push(buildEmailCaptureJs());
+    }
+    else if (features.hasProgress || features.hasCountdown || features.hasOptin) {
+        parts.push(buildProgressOptinJs());
+    }
+    else {
+        parts.push(buildDefaultClickCtaJs());
+    }
+    return parts.join("\n\n");
+}
 function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const frameScale = 1;
     const scaledRootWidth = (0, css_1.scalePx)(root.bounds.width, frameScale) || root.bounds.width;
@@ -4649,7 +5092,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
             return a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height;
         })[0] || closeNode
         : undefined;
-    // Step 3: Detect standalone product nodes
     const firstProductCard = productCardNodes[0];
     const cardProductImageNode = findDescendantRoleNode(firstProductCard, "image") || findDescendantRoleNode(firstProductCard, "product-image");
     const cardProductTitleNode = findDescendantRoleNode(firstProductCard, "product-title");
@@ -4705,7 +5147,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const subtextClass = showSubtextInVariant ? "usi_subtext" : "usi_subtext usi_sr_only";
     const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta);
     const ctaInnerHtml = showCtaInVariant ? (0, string_1.escapeHtml)(ctaLabel) : "";
-    // Step 6: Relax hasProducts and hasSummary
     const syntheticSummaryBounds = combineBounds([summarySubtotalNode, summaryDiscountNode, summaryTotalNode]);
     const effectiveSummaryNode = summaryNode || syntheticNodeFromBounds("synthetic-summary", syntheticSummaryBounds);
     const summaryTitle = resolveSummaryTitle(summaryNode);
@@ -4714,20 +5155,12 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         standaloneProductSubtitleNode ||
         standaloneProductPriceNode ||
         standaloneProductButtonNode);
-    const hasProducts = (!!productCardNodes.length && !!productBounds) || (!!hasStandaloneProduct && !!productBounds);
+    //const hasProductGrid = !!productContainerNode || productCardNodes.length > 0;
+    const hasProductGrid = !!productContainerNode ||
+        productCardNodes.length > 1 ||
+        (productCardNodes.length === 1 && productCardNodes[0].children.length > 1);
+    const hasProducts = hasProductGrid;
     const hasSummary = !!effectiveSummaryNode && !!(summarySubtotalNode || summaryDiscountNode || summaryTotalNode);
-    const flattenedExcludedIds = [
-        analysis.eyebrowNodeId,
-        analysis.headlineNodeId,
-        analysis.subtextNodeId,
-        analysis.primaryCtaNodeId,
-        analysis.summaryNodeId
-    ]
-        .concat(analysis.productCardNodeIds)
-        .filter(Boolean);
-    const flattenedExtraMainHtml = renderExtraRegionNodes(root, "main", flattenedExcludedIds, hideVisibleText);
-    const flattenedExtraAsideHtml = renderExtraRegionNodes(root, "aside", flattenedExcludedIds, hideVisibleText);
-    const flattenedExtraUtilityHtml = renderExtraRegionNodes(root, "utility", flattenedExcludedIds, hideVisibleText);
     const progressBarNodes = (0, tree_1.findNodesByRole)(root, "progress", 0.35);
     const countdownNodes = (0, tree_1.findNodesByRole)(root, "countdown", 0.35);
     const surveyNodes = topLevelNodes((0, tree_1.findNodesByRole)(root, "survey", 0.35), root);
@@ -4739,11 +5172,9 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const mediaPanelNodes = (0, tree_1.findNodesByRole)(root, "image", 0.35);
     const disclaimerNodes = (0, tree_1.findNodesByRole)(root, "disclaimer", 0.35);
     const dividerNodes = (0, tree_1.findNodesByRole)(root, "divider", 0.35);
-    // Step 11: Extra headline nodes
     const extraHeadlineNodes = topLevelNodes((0, tree_1.findNodesByRole)(root, "headline", 0.35).filter(function (node) {
         return node.id !== analysis.headlineNodeId;
     }), root);
-    // Step 4: Detect standalone subtitle nodes
     const productSubtitleNodes = (function () {
         const subtitles = [];
         productCardNodes.forEach(function (card) {
@@ -4756,7 +5187,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         }
         return subtitles;
     })();
-    // Step 5: Detect standalone product images
     const productImageNodes = productCardNodes.length > 0
         ? productCardNodes
             .map(function (card) {
@@ -4766,10 +5196,9 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         : standaloneProductImageNode
             ? [standaloneProductImageNode]
             : [];
-    const summarySubtotalNodes = summaryNode ? (0, tree_1.findNodesByRole)(summaryNode, "summary-subtotal", 0.35) : [];
-    const summaryDiscountNodes = summaryNode ? (0, tree_1.findNodesByRole)(summaryNode, "summary-discount", 0.35) : [];
-    const summaryTotalNodes = summaryNode ? (0, tree_1.findNodesByRole)(summaryNode, "summary-total", 0.35) : [];
-    // Step 7: Generate product HTML for standalone product layouts
+    // const summarySubtotalNodes = summaryNode ? findNodesByRole(summaryNode, "summary-subtotal", 0.35) : [];
+    // const summaryDiscountNodes = summaryNode ? findNodesByRole(summaryNode, "summary-discount", 0.35) : [];
+    // const summaryTotalNodes = summaryNode ? findNodesByRole(summaryNode, "summary-total", 0.35) : [];
     const standaloneProductData = hasStandaloneProduct
         ? [
             {
@@ -4789,41 +5218,13 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
             (productCardNodes.length - 1)
         : 0;
     const gridColumns = Math.max(1, Math.min(productCardNodes.length || runtimeProducts.length || 1, 3));
-    const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts, hideVisibleText);
+    const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts);
     const runtimeSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, true);
-    // Step 9: Keep standalone product nodes out of extra rendering duplication
-    const extraComponentExcludedIds = [
-        analysis.summaryNodeId,
-        ...analysis.productCardNodeIds,
-        productImageNode ? productImageNode.id : "",
-        productTitleNode ? productTitleNode.id : "",
-        productPriceNode ? productPriceNode.id : "",
-        productButtonNode ? productButtonNode.id : "",
-        ...productImageNodes.map(function (n) {
-            return n.id;
-        }),
-        ...productSubtitleNodes.map(function (n) {
-            return n.id;
-        }),
-        summarySubtotalNode ? summarySubtotalNode.id : "",
-        summaryDiscountNode ? summaryDiscountNode.id : "",
-        summaryTotalNode ? summaryTotalNode.id : "",
-        ...summarySubtotalNodes.map(function (n) {
-            return n.id;
-        }),
-        ...summaryDiscountNodes.map(function (n) {
-            return n.id;
-        }),
-        ...summaryTotalNodes.map(function (n) {
-            return n.id;
-        })
-    ].filter(Boolean);
     const realMediaPanelNodes = mediaPanelNodes.filter(function (node) {
         return !productImageNodes.some(function (pImg) {
             return pImg.id === node.id;
         });
     });
-    // Step 11: Include extra headline nodes in allExtraComponentNodes
     const allExtraComponentNodes = [
         ...extraHeadlineNodes,
         ...progressBarNodes,
@@ -4837,23 +5238,37 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         ...realMediaPanelNodes,
         ...disclaimerNodes,
         ...dividerNodes
-    ].filter(function (node) {
-        return !extraComponentExcludedIds.includes(node.id);
-    });
-    const extraRenderableNodes = allExtraComponentNodes.filter(function (node) {
-        const definition = componentDefinitionForNode(node);
-        if (hideVisibleText && definition && definition.render && definition.render.kind === "media") {
-            const tag = definition.render.htmlTag;
-            if (tag !== "hr")
-                return false;
-        }
-        return true;
-    });
-    const extraComponentsHtml = extraRenderableNodes
-        .map(function (node) {
-        return renderExplicitComponentNode(node, hideVisibleText);
-    })
-        .join("");
+    ];
+    const extraRenderableNodes = allExtraComponentNodes;
+    // const extraRenderableNodes = allExtraComponentNodes.filter(function (node) {
+    // 	const definition = componentDefinitionForNode(node);
+    // 	if (definition && definition.render && definition.render.kind === "media") {
+    // 		const tag = definition.render.htmlTag;
+    // 		if (tag !== "hr") return false;
+    // 	}
+    // 	return true;
+    // });
+    function isDefined(value) {
+        return value != null;
+    }
+    const summaryStandaloneNodes = [summarySubtotalNode, summaryDiscountNode, summaryTotalNode]
+        .filter(isDefined)
+        .sort(byVisualOrder);
+    const productAnchorNode = productContainerNode || firstProductCard;
+    const summaryAnchorNode = summaryNode || summaryStandaloneNodes[0];
+    const recursiveExcludedIds = new Set([
+        closeNode ? closeNode.id : "",
+        ...(productCardNodes.length > 1
+            ? productCardNodes.slice(productContainerNode ? 0 : 1).map(function (n) {
+                return n.id;
+            })
+            : []),
+        ...(summaryNode
+            ? []
+            : summaryStandaloneNodes.slice(summaryAnchorNode ? 1 : 0).map(function (n) {
+                return n.id;
+            }))
+    ].filter(Boolean));
     const eyebrowHtml = eyebrowText
         ? renderComponentByKey("eyebrow", eyebrowNode, constants_1.COMPONENT_BY_ID.eyebrow_block, hideVisibleText, {
             text: eyebrowText,
@@ -4877,34 +5292,36 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         ctaLabel,
         ctaInnerHtml
     });
-    const mainSectionHtml = renderComponentByKey("content_layout", undefined, undefined, hideVisibleText, {
-        eyebrowHtml,
-        headlineHtml,
-        subtextHtml,
-        ctaHtml,
-        flattenedExtraMainHtml,
-        flattenedExtraUtilityHtml,
-        extraComponentsHtml
-    });
-    const runtimeProductsSectionHtml = hasProducts
-        ? renderComponentByKey("product_grid", productContainerNode || firstProductCard, constants_1.COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: runtimeProductHtmlRaw })
-        : "";
-    const runtimeAsideHtml = renderComponentByKey("aside_layout", undefined, undefined, hideVisibleText, {
-        hasProducts,
-        flattenedExtraAsideHtml,
-        productHtml: runtimeProductsSectionHtml
-    });
-    // Step 8: Use effectiveSummaryNode
-    const runtimeSummarySectionHtml = hasSummary && effectiveSummaryNode
-        ? renderComponentByKey("price_table", effectiveSummaryNode, constants_1.COMPONENT_BY_ID.price_table, hideVisibleText, {
-            summaryHtml: runtimeSummaryHtml
-        })
-        : "";
+    const explicitOverrideHtmlById = new Map();
+    if (eyebrowNode && eyebrowHtml)
+        explicitOverrideHtmlById.set(eyebrowNode.id, eyebrowHtml);
+    if (headlineNode && headlineHtml)
+        explicitOverrideHtmlById.set(headlineNode.id, headlineHtml);
+    if (subtextNode && subtextHtml)
+        explicitOverrideHtmlById.set(subtextNode.id, subtextHtml);
+    if (ctaNode && ctaHtml)
+        explicitOverrideHtmlById.set(ctaNode.id, ctaHtml);
+    const recursiveContentHtml = root.children
+        .map(function (child) {
+        return renderRecursiveNode(child, {
+            root,
+            frameScale,
+            hideVisibleText,
+            excludedIds: recursiveExcludedIds,
+            productGridAnchorId: hasProducts && productAnchorNode ? productAnchorNode.id : undefined,
+            summaryAnchorId: hasSummary && summaryAnchorNode ? summaryAnchorNode.id : undefined,
+            productHtml: runtimeProductHtmlRaw,
+            summaryHtml: runtimeSummaryHtml,
+            explicitOverrideHtmlById
+        });
+    })
+        .filter(Boolean)
+        .join("");
     const contentHTML = `
 		${closeNode ? renderComponentByKey("close_control", closeNode, constants_1.COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
-		${mainSectionHtml}
-		${runtimeAsideHtml.trim() ? runtimeAsideHtml : ""}
-		${runtimeSummarySectionHtml}
+		${recursiveContentHtml}
+		${hasProducts && !productAnchorNode ? renderComponentByKey("product_grid", undefined, constants_1.COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: runtimeProductHtmlRaw }) : ""}
+		${hasSummary && !summaryAnchorNode ? renderComponentByKey("price_table", undefined, constants_1.COMPONENT_BY_ID.price_table, hideVisibleText, { summaryHtml: runtimeSummaryHtml }) : ""}
 	`.trim();
     const htmlDocumentBody = renderComponentByKey("screen", root, undefined, hideVisibleText, {
         contentHtml: contentHTML,
@@ -4953,7 +5370,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
                 ? [syntheticProductGridNode]
                 : [];
     }
-    // Step 8: Use effectiveSummaryNode
     if (hasSummary && effectiveSummaryNode) {
         rendererNodeMap.price_table = [effectiveSummaryNode];
     }
@@ -4989,7 +5405,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
                 productBounds
             });
         }
-        // Step 8: Use effectiveSummaryNode in price_table CSS context
         if (key === "price_table") {
             return renderer.renderCss(nodes, root, frameScale, {
                 summaryNode: effectiveSummaryNode,
@@ -5001,6 +5416,11 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         return renderer.renderCss(nodes, root, frameScale);
     })
         .join("");
+    const recursiveCss = root.children
+        .map(function (child) {
+        return collectRecursiveCss(child, root, frameScale, recursiveExcludedIds);
+    })
+        .join("");
     const baseCss = [
         COMPONENT_RENDERERS.screen.renderCss([], root, frameScale, {
             scaledRootWidth,
@@ -5010,25 +5430,16 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
             closeVisualNode,
             closeNode
         }),
-        COMPONENT_RENDERERS.content_layout.renderCss([], root, frameScale, {
-            hasProducts,
-            hasSummary,
-            mainBounds
-        }),
         showCtaInVariant ? COMPONENT_RENDERERS.primary_button.renderCss(ctaNode ? [ctaNode] : [], root, frameScale) : ""
     ].join("");
     const css = `
 ${baseCss}
 ${textRegionCss}
 ${componentCss}
+${recursiveCss}
 `.trim();
-    const js = `${buildPriceRuntimeSetup(hasSummary)}usi_js.click_cta = () => {
-	try {
-		usi_js.deep_link();
-	} catch (err) {
-		usi_commons.report_error(err);
-	}
-};
+    const runtimeJs = buildRuntimeJsForAnalysis(analysis);
+    const js = `${runtimeJs}
 
 usi_js.display_vars.p1_html = \`
 ${(0, string_1.escapeTemplateString)(formatFlattenedHtml(contentHTML))}
@@ -5042,8 +5453,15 @@ ${(0, string_1.escapeTemplateString)(formatFlattenedHtml(contentHTML))}
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Preview</title>
 		<style>
-		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}.usi_display * {padding:0 0 0 0;margin:0 0 0 0;color:#000000;font-weight:normal;font-size:12pt;text-decoration:none;line-height:12pt;box-shadow: none;border: none; outline: none;text-align: left;font-family: Helvetica, Arial, sans-serif;float:none;} .usi_quickide_css {display:none;visibility:hidden;}#usi_close { position:absolute;left:85%;top:0px;width:15%;height:15%;z-index:2000000300;cursor:pointer;border:none;background:none;margin:0;padding:0; }
-button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { background:none;border:none;cursor:pointer; } #usi_content { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000200; } #usi_background { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000100; } #usi_page { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000150; } .usi_sr_only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}
+		.usi_display * {padding:0 0 0 0;margin:0 0 0 0;color:#000000;font-weight:normal;font-size:12pt;text-decoration:none;line-height:12pt;box-shadow:none;border:none;outline:none;text-align:left;font-family:Helvetica, Arial, sans-serif;float:none;}
+		.usi_quickide_css {display:none;visibility:hidden;}
+		#usi_close { position:absolute;left:85%;top:0px;width:15%;height:15%;z-index:2000000300;cursor:pointer;border:none;background:none;margin:0;padding:0; }
+		button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_close:focus { background:none;border:none;cursor:pointer; }
+		#usi_content { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000200; }
+		#usi_background { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000100; }
+		#usi_page { position:absolute;left:0px;top:0px;width:100%;height:100%;z-index:2000000150; }
+		.usi_sr_only { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0, 0, 0, 0) !important; white-space:nowrap !important; border:0 !important; }
 		${css}
 		</style>
 	</head>
@@ -5060,10 +5478,47 @@ button#usi_close, button#usi_close:hover, button#usi_close:active, button#usi_cl
         contentHTML: contentHTML
     };
 }
+function detectEnabledFeaturesFromAnalysis(analysis) {
+    const root = analysis.ast;
+    const emailInputNodes = (0, tree_1.findNodesByRole)(root, "email-input", 0.35);
+    const phoneInputNodes = (0, tree_1.findNodesByRole)(root, "phone-input", 0.35);
+    const surveyNodes = (0, tree_1.findNodesByRole)(root, "survey", 0.35);
+    const countdownNodes = (0, tree_1.findNodesByRole)(root, "countdown", 0.35);
+    const progressBarNodes = (0, tree_1.findNodesByRole)(root, "progress", 0.35);
+    const copyCouponNodes = (0, tree_1.findNodesByRole)(root, "copy-coupon", 0.35);
+    const optinNodes = (0, tree_1.findNodesByRole)(root, "optin", 0.35);
+    const productCount = Math.max(analysis.productCardNodeIds.length, analysis.schema.products.length);
+    const hasSummary = !!analysis.schema.summary;
+    const hasProducts = !!analysis.productContainerNodeId || analysis.productCardNodeIds.length > 0 || productCount > 0;
+    return {
+        hasSummary,
+        hasProducts,
+        hasSingleProduct: hasProducts && productCount === 1,
+        hasMultiProduct: hasProducts && productCount > 1,
+        hasRecommendations: hasProducts && productCount >= 3 && !hasSummary,
+        hasEmailInput: emailInputNodes.length > 0,
+        hasPhoneInput: phoneInputNodes.length > 0,
+        hasSurvey: surveyNodes.length > 0,
+        hasCountdown: countdownNodes.length > 0,
+        hasProgress: progressBarNodes.length > 0,
+        hasCoupon: copyCouponNodes.length > 0,
+        hasOptin: optinNodes.length > 0
+    };
+}
+function buildRuntimeJsForAnalysis(analysis) {
+    const features = detectEnabledFeaturesFromAnalysis(analysis);
+    const needsPriceRuntime = !!analysis.schema.summary;
+    return `${buildPriceRuntimeSetup(needsPriceRuntime)}
+${buildFeatureJs(features)}`.trim();
+}
 function buildUsiJsFile(pages) {
-    const needsPriceRuntime = pages.some(function (page) {
-        return !!page.analysis.schema.summary;
-    });
+    const runtimeBlocks = pages
+        .map(function (page) {
+        return `
+${buildRuntimeJsForAnalysis(page.analysis)}
+`;
+    })
+        .join("\n");
     const assignments = pages
         .map(function (page) {
         return `usi_js.display_vars.${page.key}_html = \`
@@ -5072,15 +5527,10 @@ ${(0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.contentHTM
 `;
     })
         .join("\n");
-    return `${buildPriceRuntimeSetup(needsPriceRuntime)}usi_js.click_cta = () => {
-	try {
-		usi_js.deep_link();
-	} catch (err) {
-		usi_commons.report_error(err);
-	}
-};
+    return `${runtimeBlocks}
 
-${assignments}`;
+${assignments}
+`;
 }
 },
 "utils/css": function(require, module, exports) {

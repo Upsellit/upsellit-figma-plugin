@@ -180,7 +180,7 @@ export function renderMultiExportIndex(
   <main class="usi_export_root">
     <section class="usi_export_header">
       <h1>Export Index</h1>
-      <p>Preview each exported frame below.</p>
+      <p><button onclick='Array.from(document.querySelectorAll(".usi_export_open")).forEach(el => { const url = el.href || el.getAttribute("data-href"); if (url) window.open(url, "_blank"); });'>Open All</button></p>
     </section>
 
     <section class="usi_export_grid">

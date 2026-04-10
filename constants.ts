@@ -88,7 +88,7 @@ export const COMMON_COMPONENTS: CommonComponentDefinition[] = [
 		region: "main",
 		kind: "button",
 		buttonText: "Redeem Now",
-		flattened: { liveText: true, textBaked: true }
+		flattened: { liveText: true, textBaked: false }
 	}),
 	component(
 		"thank_you_button",
@@ -223,7 +223,7 @@ export const COMMON_COMPONENTS: CommonComponentDefinition[] = [
 		region: "main",
 		kind: "optin",
 		fallbackText: "Yes, send me updates and offers.",
-		flattened: { liveText: true, textBaked: true }
+		flattened: { liveText: true, textBaked: false }
 	}),
 	component("countdown_timer", "Countdown Timer", "countdown", "Urgency timer display.", "utility", {
 		htmlTag: "div",
