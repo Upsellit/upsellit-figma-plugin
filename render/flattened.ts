@@ -178,6 +178,7 @@ ${htmlToCssClassName(className)} .usi_survey_options {
 	display: flex;
 	flex-direction: column;
 	gap: 0.5em;
+	align-items: flex-start;
 }
 
 ${htmlToCssClassName(className)} .usi_survey_option {
@@ -379,7 +380,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 			const className = definition.render.className;
 			return `<${tag} class="${className}">${escapeHtml(text)}</${tag}>`;
 		},
-		renderCss: (nodes, _root, frameScale) => {
+		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			return nodes
 				.map(function (node) {
@@ -387,6 +388,10 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 					if (!definition) return "";
 					return `
 .${definition.render.className} {
+	position: absolute;
+	left: ${toPercent(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${toPercent(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	margin: 0;
 	white-space: pre-wrap;
 	${flattenedTextDeclarations(node, frameScale)}
@@ -406,7 +411,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 			const className = definition.render.className;
 			return `<${tag} class="${className}">${escapeHtml(text)}</${tag}>`;
 		},
-		renderCss: (nodes, _root, frameScale) => {
+		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			return nodes
 				.map(function (node) {
@@ -414,6 +419,10 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 					if (!definition) return "";
 					return `
 .${definition.render.className} {
+	position: absolute;
+	left: ${toPercent(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${toPercent(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	margin: 0;
 	font-size: 0.9em;
 	${flattenedTextDeclarations(node, frameScale, { color: "#666" })}
@@ -433,7 +442,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 			const className = definition.render.className;
 			return `<${tag} class="${className}">${escapeHtml(text)}</${tag}>`;
 		},
-		renderCss: (nodes, _root, frameScale) => {
+		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			return nodes
 				.map(function (node) {
@@ -441,6 +450,10 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 					if (!definition) return "";
 					return `
 .${definition.render.className} {
+	position: absolute;
+	left: ${toPercent(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${toPercent(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	margin: 0;
 	${flattenedTextDeclarations(node, frameScale)}
 }
@@ -458,7 +471,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 			const className = definition.render.className;
 			return `<button class="${className}" type="button">${escapeHtml(text || definition.render.buttonText || "View item")}</button>`;
 		},
-		renderCss: (nodes, _root, frameScale) => {
+		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			return nodes
 				.map(function (node) {
@@ -466,6 +479,10 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 					if (!definition) return "";
 					return `
 .${definition.render.className} {
+	position: absolute;
+	left: ${toPercent(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${toPercent(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -490,7 +507,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 			const className = definition.render.className;
 			return `<div class="${className}"><img src="${PRODUCT_PLACEHOLDER_IMAGE}" alt="Product" /></div>`;
 		},
-		renderCss: (nodes, _root, frameScale) => {
+		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			return nodes
 				.map(function (node) {
@@ -498,13 +515,15 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 					if (!definition) return "";
 					return `
 .${definition.render.className} {
-	position: relative;
+	position: absolute;
+	left: ${toPercent(node.bounds.x - root.bounds.x, root.bounds.width)};
+	top: ${toPercent(node.bounds.y - root.bounds.y, root.bounds.height)};
+	width: ${toPercent(node.bounds.width, root.bounds.width)};
+	height: ${toPercent(node.bounds.height, root.bounds.height)};
 	display: block;
-	width: 100%;
 	overflow: hidden;
-	${flattenedBoxDeclarations(node, frameScale, { width: "100%" })}
+	${flattenedBoxDeclarations(node, frameScale)}
 }
-
 .${definition.render.className} img {
 	display: block;
 	width: 100%;
@@ -608,8 +627,15 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 			const productGap = context ? (context.productGap as number | undefined) : undefined;
 			const gridColumns = context ? (context.gridColumns as number | undefined) : undefined;
 			const productBounds = context ? (context.productBounds as NodeBounds | undefined) : undefined;
+			const firstCardWidth = firstProductCard && productBounds ? firstProductCard.bounds.width : undefined;
+			const imageAspectRatio = productImageNode
+				? `${productImageNode.bounds.width} / ${productImageNode.bounds.height}`
+				: undefined;
 
 			const productCardCss = nodes
+				.filter(function (card) {
+					return card.children && card.children.length > 0;
+				})
 				.map(function (card, index) {
 					const imageNode = findNormalizedNodeById(card, findImageNodeId(card));
 					const imageRule = imageNode
@@ -632,85 +658,129 @@ ${imageRule}
 `;
 				})
 				.join("");
-
 			return `
 .usi_products {
 	position: absolute;
-	left: ${productBounds ? toPercent(productBounds.x - root.bounds.x, root.bounds.width) : "0%"};
-	top: ${productBounds ? toPercent(productBounds.y - root.bounds.y, root.bounds.height) : "0%"};
-	width: ${productBounds ? toPercent(productBounds.width, root.bounds.width) : "100%"};
+	left: ${productBounds ? toPercent(productBounds.x - root.bounds.x, root.bounds.width) : "12%"};
+	top: ${productBounds ? toPercent(productBounds.y - root.bounds.y, root.bounds.height) : "59%"};
+	width: ${productBounds ? toPercent(productBounds.width, root.bounds.width) : "76%"};
 	min-height: ${productBounds ? toPercent(productBounds.height, root.bounds.height) : "0%"};
 	display: grid;
 	grid-template-columns: repeat(${productBounds && productBounds.width < productBounds.height * 0.9 ? 1 : gridColumns || 1}, minmax(0, 1fr));
 	gap: ${productBounds && productGap != null ? toPercent(productGap, productBounds.width) : "2%"};
+	justify-items: center;
+	justify-content: center;
+	align-content: start;
 	align-items: start;
+	box-sizing: border-box;
 }
 
 .usi_product {
 	position: relative;
 	display: flex;
 	flex-direction: column;
+	align-items: stretch;
 	gap: 0.75em;
 	padding: 0.9em;
+	width: ${
+		firstCardWidth && productBounds && gridColumns && gridColumns > 1
+			? toPercent(firstCardWidth, productBounds.width)
+			: "100%"
+	};
+	max-width: 100%;
 	min-width: 0;
-	${
+	min-height: 0;
+	margin: 0 auto;
+	box-sizing: border-box;
+ 	${
 		flattenedBoxDeclarations(firstProductCard, frameScale, {
-			width: "100%",
+			width:
+				firstCardWidth && productBounds && gridColumns && gridColumns > 1
+					? toPercent(firstCardWidth, productBounds.width)
+					: "100%",
 			"max-width": "100%",
 			"min-width": "0"
-		}) || "width: 100%; max-width: 100%;"
+		}) || "width: 100%; max-width: 100%; min-width: 0;"
 	}
-}
 
 .usi_product_image {
 	position: relative;
 	display: block;
 	width: 100%;
+	min-width: 0;
 	overflow: hidden;
-	${flattenedBoxDeclarations(productImageNode, frameScale, { width: "100%" }) || "width: 100%;"}
+	${imageAspectRatio ? `aspect-ratio: ${imageAspectRatio};` : ""}
+	${
+		flattenedBoxDeclarations(productImageNode, frameScale, {
+			width: "100%",
+			position: "relative",
+			left: undefined,
+			top: undefined
+		}) || "width: 100%; position: relative;"
+	}
 }
 
 .usi_product_image img {
 	display: block;
 	width: 100%;
 	height: 100%;
+	max-width: 100%;
 	object-fit: contain;
 }
 
 .usi_product_body {
 	display: flex;
 	flex-direction: column;
+	align-items: stretch;
 	gap: 0.35em;
 	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 }
 
-.usi_product_subtitle {
-	margin: 0;
-	font-size: 0.9em;
-	${productSubtitleNodes && productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
+.usi_product_title,
+.usi_product_subtitle,
+.usi_product_price {
+	position: static;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
 }
 
 .usi_product_title {
 	margin: 0;
-	white-space: pre-wrap;
+	white-space: normal;
+	word-break: break-word;
 	${
 		flattenedTextDeclarations(productTitleNode, frameScale, {
-			"white-space": "pre-wrap",
+			"white-space": "normal",
 			"background-color": "transparent",
 			border: "none"
 		}) || "font-weight: 700;"
 	}
 }
 
+.usi_product_subtitle {
+	margin: 0;
+	word-break: break-word;
+	${productSubtitleNodes && productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
+}
+
 .usi_product_price {
 	margin: 0;
+	word-break: break-word;
 	${flattenedTextDeclarations(productPriceNode, frameScale) || ""}
 }
 
 .usi_product_cta {
+	position: static;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	max-width: 100%;
+	align-self: flex-start;
+	width: auto;
+	max-width: 100%;
 	padding: 0.75em 1em;
 	${
 		flattenedBoxDeclarations(productButtonNode, frameScale, {
@@ -1117,13 +1187,46 @@ button#usi_close:focus {
 			const hasProducts = !!(context && context.hasProducts);
 			const hasSummary = !!(context && context.hasSummary);
 			const mainBounds = context ? (context.mainBounds as NodeBounds | undefined) : undefined;
+
+			const left =
+				hasProducts || hasSummary
+					? mainBounds
+						? toPercent(mainBounds.x - root.bounds.x, root.bounds.width)
+						: "0%"
+					: "0%";
+			const top =
+				hasProducts || hasSummary
+					? mainBounds
+						? toPercent(mainBounds.y - root.bounds.y, root.bounds.height)
+						: "0%"
+					: "0%";
+			const width =
+				hasProducts || hasSummary
+					? mainBounds
+						? toPercent(mainBounds.width, root.bounds.width)
+						: "100%"
+					: "100%";
+			const height =
+				!hasProducts && !hasSummary
+					? "100%"
+					: mainBounds
+						? toPercent(mainBounds.height, root.bounds.height)
+						: "100%";
 			return `
-.usi_main {
-	position: absolute;
-	left: ${hasProducts || hasSummary ? (mainBounds ? toPercent(mainBounds.x - root.bounds.x, root.bounds.width) : "0%") : "0%"};
-	top: ${hasProducts || hasSummary ? (mainBounds ? toPercent(mainBounds.y - root.bounds.y, root.bounds.height) : "0%") : "0%"};
-	width: ${hasProducts || hasSummary ? (mainBounds ? toPercent(mainBounds.width, root.bounds.width) : "100%") : "100%"};
-	height: ${!hasProducts && !hasSummary ? "100%" : mainBounds ? toPercent(mainBounds.height, root.bounds.height) : "100%"};
+.usi_main {	
+    position: relative;
+    height: 100%;
+	/*position: absolute;*/
+	/*left: ${left};*/
+	/*top: ${top};*/
+	/*width: ${width};*/
+	/*height: ${height};*/
+	min-width: 0;
+	box-sizing: border-box;
+	display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
 }
 `;
 		},
@@ -1137,10 +1240,8 @@ button#usi_close:focus {
 			const productHtml = String((context && context.productHtml) || "");
 			if (!hasProducts && !flattenedExtraAsideHtml) return "";
 			return `
-<section class="usi_aside">
 	${hasProducts ? productHtml : ""}
 	${flattenedExtraAsideHtml}
-</section>
 			`.trim();
 		},
 		renderCss: () => "",
@@ -1150,54 +1251,43 @@ button#usi_close:focus {
 
 function generateProductGridHtml(
 	products: Array<{ title?: string; subtitle?: string; price?: string; cta?: string }>,
-	hideVisibleText: boolean,
-	isRuntime: boolean
+	hideVisibleText: boolean
 ): string {
 	if (!products.length) return "";
+
 	return products
 		.map(function (product, index) {
-			const fallbackTitle = escapeHtml(product.title || "Product Name");
+			const fallbackTitle = escapeHtml(product.title || "");
 			const fallbackSubtitle = escapeHtml(product.subtitle || "");
-			const fallbackPrice = escapeHtml(product.price || "$XX.XX");
-			const fallbackButton = escapeHtml(product.cta || "View item");
-			const fallbackTitleForRuntime = fallbackTitle.replace(/'/g, "&#39;");
+			const fallbackPrice = escapeHtml(product.price || "");
+			const fallbackButton = escapeHtml(product.cta || "");
 
-			if (isRuntime) {
-				return `
-					<article class="usi_product_card usi_product usi_product${index + 1}">
-						${
-							!hideVisibleText
-								? `<div class="usi_product_image">
-							<img
-								src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
-								alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}"
-							/>
-						</div>`
-								: ""
-						}
-						<div class="usi_product_body">
-							<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitleForRuntime}')}</h3>
-							${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
-							<p class="usi_product_price">${fallbackPrice}</p>
-							<button class="usi_product_cta" type="button">${fallbackButton}</button>
-						</div>
-					</article>
-				`.trim();
-			}
+			const hasMeaningfulContent = !!fallbackSubtitle || !!fallbackPrice || !!fallbackButton;
+
+			if (!hasMeaningfulContent) return "";
+
 			return `
 				<article class="usi_product_card usi_product usi_product${index + 1}">
-					<div class="usi_product_image">
-						<img src="${PRODUCT_PLACEHOLDER_IMAGE}" alt="${fallbackTitle}" />
-					</div>
+					${
+						!hideVisibleText
+							? `<div class="usi_product_image">
+								<img
+									src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
+									alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}"
+								/>
+							</div>`
+							: ""
+					}
 					<div class="usi_product_body">
-						<h3 class="usi_product_title">${fallbackTitle}</h3>
+						<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle}')}</h3>
 						${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
-						<p class="usi_product_price">${fallbackPrice}</p>
-						<button class="usi_product_cta" type="button">${fallbackButton}</button>
+						${fallbackPrice ? `<p class="usi_product_price">${fallbackPrice}</p>` : ""}
+						${fallbackButton ? `<button class="usi_product_cta" type="button">${fallbackButton}</button>` : ""}
 					</div>
 				</article>
 			`.trim();
 		})
+		.filter(Boolean)
 		.join("");
 }
 
@@ -1295,8 +1385,11 @@ function hasInsertedComponent(root: NormalizedNode, componentId: string): boolea
 	});
 }
 
-function htmlToCssClassName(cn: string) : string{
-	return cn.split(" ").map(s => "."+s).join("")
+function htmlToCssClassName(cn: string): string {
+	return cn
+		.split(" ")
+		.map((s) => "." + s)
+		.join("");
 }
 
 function buildPriceRuntimeSetup(includeSummary: boolean): string {
@@ -1462,6 +1555,40 @@ function findDescendantRoleNode(root: NormalizedNode | undefined, role: ExportRo
 	return pickBestNode(findNodesByRole(root, role, 0.1));
 }
 
+// --- Standalone role detection helpers ---
+
+function findStandaloneRoleNode(
+	root: NormalizedNode,
+	role: ExportRole,
+	excludedAncestorIds: string[] = []
+): NormalizedNode | undefined {
+	return pickBestNode(
+		findNodesByRole(root, role, 0.35).filter(function (node) {
+			return !excludedAncestorIds.some(function (ancestorId) {
+				const ancestor = findNormalizedNodeById(root, ancestorId);
+				return ancestor ? nodeContains(ancestor, node) : false;
+			});
+		})
+	);
+}
+
+function syntheticNodeFromBounds(id: string, bounds: NodeBounds | undefined): NormalizedNode | undefined {
+	if (!bounds) return undefined;
+	return {
+		id: id,
+		name: id,
+		type: "FRAME",
+		text: "",
+		visible: true,
+		ignored: false,
+		children: [],
+		bounds: bounds,
+		style: {},
+		layout: {},
+		metadata: {}
+	} as unknown as NormalizedNode;
+}
+
 function resolveSummaryTitle(summaryNode: NormalizedNode | undefined): string | undefined {
 	if (!summaryNode) return undefined;
 	for (let index = 0; index < summaryNode.children.length; index += 1) {
@@ -1555,19 +1682,49 @@ export function renderFlattenedHtml(
 				})[0] || closeNode
 		: undefined;
 
+	// Step 3: Detect standalone product nodes
 	const firstProductCard = productCardNodes[0];
-	const productImageNode =
+	const cardProductImageNode =
 		findDescendantRoleNode(firstProductCard, "image") || findDescendantRoleNode(firstProductCard, "product-image");
-	const productTitleNode = findDescendantRoleNode(firstProductCard, "product-title");
-	const productPriceNode = findDescendantRoleNode(firstProductCard, "product-price");
-	const productButtonNode =
-		findDescendantRoleNode(firstProductCard, "product-cta") || findDescendantRoleNode(firstProductCard, "cta");
+	const cardProductTitleNode = findDescendantRoleNode(firstProductCard, "product-title");
+	const cardProductPriceNode = findDescendantRoleNode(firstProductCard, "product-price");
+	const cardProductButtonNode = findDescendantRoleNode(firstProductCard, "product-cta");
 
-	const summarySubtotalNode = findDescendantRoleNode(summaryNode, "summary-subtotal");
-	const summaryDiscountNode = findDescendantRoleNode(summaryNode, "summary-discount");
-	const summaryTotalNode = findDescendantRoleNode(summaryNode, "summary-total");
+	const standaloneProductImageNode =
+		findStandaloneRoleNode(root, "product-image", analysis.productCardNodeIds) ||
+		findStandaloneRoleNode(root, "image", analysis.productCardNodeIds);
+	const standaloneProductTitleNode = findStandaloneRoleNode(root, "product-title", analysis.productCardNodeIds);
+	const standaloneProductSubtitleNode = findStandaloneRoleNode(root, "product-subtitle", analysis.productCardNodeIds);
+	const standaloneProductPriceNode = findStandaloneRoleNode(root, "product-price", analysis.productCardNodeIds);
+	const standaloneProductButtonNode = findStandaloneRoleNode(root, "product-cta", analysis.productCardNodeIds);
 
-	const productBounds = productContainerNode ? productContainerNode.bounds : buildSyntheticBounds(productCardNodes);
+	const productImageNode = cardProductImageNode || standaloneProductImageNode;
+	const productTitleNode = cardProductTitleNode || standaloneProductTitleNode;
+	const productPriceNode = cardProductPriceNode || standaloneProductPriceNode;
+	const productButtonNode = cardProductButtonNode || standaloneProductButtonNode;
+
+	const summarySubtotalNode =
+		findDescendantRoleNode(summaryNode, "summary-subtotal") ||
+		findStandaloneRoleNode(root, "summary-subtotal", analysis.summaryNodeId ? [analysis.summaryNodeId] : []);
+	const summaryDiscountNode =
+		findDescendantRoleNode(summaryNode, "summary-discount") ||
+		findStandaloneRoleNode(root, "summary-discount", analysis.summaryNodeId ? [analysis.summaryNodeId] : []);
+	const summaryTotalNode =
+		findDescendantRoleNode(summaryNode, "summary-total") ||
+		findStandaloneRoleNode(root, "summary-total", analysis.summaryNodeId ? [analysis.summaryNodeId] : []);
+
+	const standaloneProductBounds = combineBounds([
+		standaloneProductImageNode,
+		standaloneProductTitleNode,
+		standaloneProductSubtitleNode,
+		standaloneProductPriceNode,
+		standaloneProductButtonNode
+	]);
+	const productBounds =
+		(productContainerNode && productContainerNode.bounds) ||
+		buildSyntheticBounds(productCardNodes) ||
+		standaloneProductBounds;
+
 	const mainBounds = combineBounds([eyebrowNode, headlineNode, subtextNode, ctaNode]);
 
 	const headlineText = analysis.schema.headline || (headlineNode ? collectText(headlineNode) : "");
@@ -1594,22 +1751,20 @@ export function renderFlattenedHtml(
 	const showCtaInVariant = !!(ctaNode || analysis.schema.primaryCta);
 	const ctaInnerHtml = showCtaInVariant ? escapeHtml(ctaLabel) : "";
 
+	// Step 6: Relax hasProducts and hasSummary
+	const syntheticSummaryBounds = combineBounds([summarySubtotalNode, summaryDiscountNode, summaryTotalNode]);
+	const effectiveSummaryNode = summaryNode || syntheticNodeFromBounds("synthetic-summary", syntheticSummaryBounds);
 	const summaryTitle = resolveSummaryTitle(summaryNode);
-	const hasProducts = !!analysis.schema.products.length && !!productCardNodes.length && !!productBounds;
-	const hasSummary = !!analysis.schema.summary && !!summaryNode;
 
-	const productGap =
-		productCardNodes.length > 1 && productBounds
-			? productCardNodes.slice(1).reduce(function (sum, card, index) {
-					const previous = productCardNodes[index];
-					return sum + Math.max(0, card.bounds.x - (previous.bounds.x + previous.bounds.width));
-				}, 0) /
-				(productCardNodes.length - 1)
-			: 0;
-
-	const gridColumns = Math.max(1, Math.min(productCardNodes.length || analysis.schema.products.length || 1, 3));
-	const runtimeProductHtmlRaw = generateProductGridHtml(analysis.schema.products, hideVisibleText, true);
-	const runtimeSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, true);
+	const hasStandaloneProduct = !!(
+		standaloneProductImageNode ||
+		standaloneProductTitleNode ||
+		standaloneProductSubtitleNode ||
+		standaloneProductPriceNode ||
+		standaloneProductButtonNode
+	);
+	const hasProducts = (!!productCardNodes.length && !!productBounds) || (!!hasStandaloneProduct && !!productBounds);
+	const hasSummary = !!effectiveSummaryNode && !!(summarySubtotalNode || summaryDiscountNode || summaryTotalNode);
 
 	const flattenedExcludedIds = [
 		analysis.eyebrowNodeId,
@@ -1637,36 +1792,84 @@ export function renderFlattenedHtml(
 	const disclaimerNodes = findNodesByRole(root, "disclaimer", 0.35);
 	const dividerNodes = findNodesByRole(root, "divider", 0.35);
 
+	// Step 11: Extra headline nodes
+	const extraHeadlineNodes = topLevelNodes(
+		findNodesByRole(root, "headline", 0.35).filter(function (node) {
+			return node.id !== analysis.headlineNodeId;
+		}),
+		root
+	);
+
+	// Step 4: Detect standalone subtitle nodes
 	const productSubtitleNodes = (function () {
 		const subtitles: NormalizedNode[] = [];
 		productCardNodes.forEach(function (card) {
 			const subtitle = findDescendantRoleNode(card, "product-subtitle");
 			if (subtitle) subtitles.push(subtitle);
 		});
+		if (!subtitles.length && standaloneProductSubtitleNode) {
+			subtitles.push(standaloneProductSubtitleNode);
+		}
 		return subtitles;
 	})();
 
+	// Step 5: Detect standalone product images
 	const productImageNodes =
 		productCardNodes.length > 0
 			? (productCardNodes
 					.map(function (card) {
-						return findDescendantRoleNode(card, "product-image");
+						return findDescendantRoleNode(card, "product-image") || findDescendantRoleNode(card, "image");
 					})
 					.filter(Boolean) as NormalizedNode[])
-			: [];
+			: standaloneProductImageNode
+				? [standaloneProductImageNode]
+				: [];
+
 	const summarySubtotalNodes = summaryNode ? findNodesByRole(summaryNode, "summary-subtotal", 0.35) : [];
 	const summaryDiscountNodes = summaryNode ? findNodesByRole(summaryNode, "summary-discount", 0.35) : [];
 	const summaryTotalNodes = summaryNode ? findNodesByRole(summaryNode, "summary-total", 0.35) : [];
 
+	// Step 7: Generate product HTML for standalone product layouts
+	const standaloneProductData = hasStandaloneProduct
+		? [
+				{
+					title: productTitleNode ? componentText(productTitleNode) : "",
+					subtitle: productSubtitleNodes[0] ? componentText(productSubtitleNodes[0]) : "",
+					price: productPriceNode ? componentText(productPriceNode) : "",
+					cta: productButtonNode ? componentText(productButtonNode) : ""
+				}
+			]
+		: [];
+	const runtimeProducts = analysis.schema.products.length > 0 ? analysis.schema.products : standaloneProductData;
+	const productGap =
+		productCardNodes.length > 1 && productBounds
+			? productCardNodes.slice(1).reduce(function (sum, card, index) {
+					const previous = productCardNodes[index];
+					return sum + Math.max(0, card.bounds.x - (previous.bounds.x + previous.bounds.width));
+				}, 0) /
+				(productCardNodes.length - 1)
+			: 0;
+	const gridColumns = Math.max(1, Math.min(productCardNodes.length || runtimeProducts.length || 1, 3));
+	const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts, hideVisibleText);
+	const runtimeSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, true);
+
+	// Step 9: Keep standalone product nodes out of extra rendering duplication
 	const extraComponentExcludedIds = [
 		analysis.summaryNodeId,
 		...analysis.productCardNodeIds,
+		productImageNode ? productImageNode.id : "",
+		productTitleNode ? productTitleNode.id : "",
+		productPriceNode ? productPriceNode.id : "",
+		productButtonNode ? productButtonNode.id : "",
 		...productImageNodes.map(function (n) {
 			return n.id;
 		}),
 		...productSubtitleNodes.map(function (n) {
 			return n.id;
 		}),
+		summarySubtotalNode ? summarySubtotalNode.id : "",
+		summaryDiscountNode ? summaryDiscountNode.id : "",
+		summaryTotalNode ? summaryTotalNode.id : "",
 		...summarySubtotalNodes.map(function (n) {
 			return n.id;
 		}),
@@ -1684,7 +1887,9 @@ export function renderFlattenedHtml(
 		});
 	});
 
+	// Step 11: Include extra headline nodes in allExtraComponentNodes
 	const allExtraComponentNodes = [
+		...extraHeadlineNodes,
 		...progressBarNodes,
 		...countdownNodes,
 		...surveyNodes,
@@ -1752,13 +1957,15 @@ export function renderFlattenedHtml(
 		extraComponentsHtml
 	});
 
-	const runtimeProductsSectionHtml = renderComponentByKey(
-		"product_grid",
-		productContainerNode || firstProductCard,
-		COMPONENT_BY_ID.product_grid,
-		hideVisibleText,
-		{ productHtml: runtimeProductHtmlRaw }
-	);
+	const runtimeProductsSectionHtml = hasProducts
+		? renderComponentByKey(
+				"product_grid",
+				productContainerNode || firstProductCard,
+				COMPONENT_BY_ID.product_grid,
+				hideVisibleText,
+				{ productHtml: runtimeProductHtmlRaw }
+			)
+		: "";
 
 	const runtimeAsideHtml = renderComponentByKey("aside_layout", undefined, undefined, hideVisibleText, {
 		hasProducts,
@@ -1766,18 +1973,18 @@ export function renderFlattenedHtml(
 		productHtml: runtimeProductsSectionHtml
 	});
 
-	const runtimeSummarySectionHtml = renderComponentByKey(
-		"price_table",
-		summaryNode,
-		COMPONENT_BY_ID.price_table,
-		hideVisibleText,
-		{ summaryHtml: runtimeSummaryHtml }
-	);
+	// Step 8: Use effectiveSummaryNode
+	const runtimeSummarySectionHtml =
+		hasSummary && effectiveSummaryNode
+			? renderComponentByKey("price_table", effectiveSummaryNode, COMPONENT_BY_ID.price_table, hideVisibleText, {
+					summaryHtml: runtimeSummaryHtml
+				})
+			: "";
 
 	const contentHTML = `
 		${closeNode ? renderComponentByKey("close_control", closeNode, COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
 		${mainSectionHtml}
-		${runtimeAsideHtml}
+		${runtimeAsideHtml.trim() ? runtimeAsideHtml : ""}
 		${runtimeSummarySectionHtml}
 	`.trim();
 
@@ -1809,11 +2016,11 @@ export function renderFlattenedHtml(
 		countdown: countdownNodes,
 		progress: progressBarNodes,
 		media: [...dividerNodes, ...realMediaPanelNodes],
-		product_title: productTitleNode ? [productTitleNode] : [],
-		product_subtitle: productSubtitleNodes,
-		product_price: productPriceNode ? [productPriceNode] : [],
-		product_button: productButtonNode ? [productButtonNode] : [],
-		product_image: productImageNode ? [productImageNode] : [],
+		product_title: hasProducts ? [] : productTitleNode ? [productTitleNode] : [],
+		product_subtitle: hasProducts ? [] : productSubtitleNodes,
+		product_price: hasProducts ? [] : productPriceNode ? [productPriceNode] : [],
+		product_button: hasProducts ? [] : productButtonNode ? [productButtonNode] : [],
+		product_image: hasProducts ? [] : productImageNode ? [productImageNode] : [],
 		price_subtotal: summarySubtotalNode ? [summarySubtotalNode] : [],
 		price_discount: summaryDiscountNode ? [summaryDiscountNode] : [],
 		price_total: summaryTotalNode ? [summaryTotalNode] : [],
@@ -1822,10 +2029,21 @@ export function renderFlattenedHtml(
 	};
 
 	if (hasProducts) {
-		rendererNodeMap.product_grid = productCardNodes;
+		const syntheticProductGridNode =
+			productCardNodes.length === 0 && productBounds
+				? syntheticNodeFromBounds("synthetic-product-grid", productBounds)
+				: undefined;
+
+		rendererNodeMap.product_grid = productCardNodes.length
+			? productCardNodes
+			: syntheticProductGridNode
+				? [syntheticProductGridNode]
+				: [];
 	}
-	if (hasSummary && summaryNode) {
-		rendererNodeMap.price_table = [summaryNode];
+
+	// Step 8: Use effectiveSummaryNode
+	if (hasSummary && effectiveSummaryNode) {
+		rendererNodeMap.price_table = [effectiveSummaryNode];
 	}
 
 	const groupedExtraComponentNodes = groupNodesByRenderer(extraRenderableNodes);
@@ -1864,9 +2082,10 @@ export function renderFlattenedHtml(
 				});
 			}
 
+			// Step 8: Use effectiveSummaryNode in price_table CSS context
 			if (key === "price_table") {
 				return renderer.renderCss(nodes, root, frameScale, {
-					summaryNode,
+					summaryNode: effectiveSummaryNode,
 					summarySubtotalNode,
 					summaryDiscountNode,
 					summaryTotalNode

@@ -49,99 +49,197 @@ export function renderPreviewIndex(
   <style>
     :root {
       color-scheme: light dark;
-      --usi_bg:#f5f5f5;
-      --usi_surface:#ffffff;
-      --usi_surface_alt:#f8f8f8;
-      --usi_border:#dddddd;
-      --usi_text:#111111;
-      --usi_muted:#555555;
-      --usi_link:#0b57d0;
-      --usi_media:#f8f8f8;
-      --usi_nav:#eef3fd;
-      --usi_nav_active:#dce8ff;
+      --usi_bg: #f5f5f5;
+      --usi_surface: #ffffff;
+      --usi_surface_alt: #f8f8f8;
+      --usi_border: #dddddd;
+      --usi_text: #111111;
+      --usi_muted: #555555;
+      --usi_link: #0b57d0;
+      --usi_media: #f8f8f8;
+      --usi_nav: #eef3fd;
+      --usi_nav_active: #dce8ff;
     }
+
     @media (prefers-color-scheme: dark) {
       :root {
-        --usi_bg:#111315;
-        --usi_surface:#1a1d21;
-        --usi_surface_alt:#121417;
-        --usi_border:#31353b;
-        --usi_text:#f1f3f4;
-        --usi_muted:#aab1b9;
-        --usi_link:#8ab4f8;
-        --usi_media:#0f1113;
-        --usi_nav:#1d2633;
-        --usi_nav_active:#27364a;
+        --usi_bg: #111315;
+        --usi_surface: #1a1d21;
+        --usi_surface_alt: #121417;
+        --usi_border: #31353b;
+        --usi_text: #f1f3f4;
+        --usi_muted: #aab1b9;
+        --usi_link: #8ab4f8;
+        --usi_media: #0f1113;
+        --usi_nav: #1d2633;
+        --usi_nav_active: #27364a;
       }
     }
 
-    body {
-      margin:0;
-      padding:24px;
-      font-family:Helvetica,Arial,sans-serif;
-      background:var(--usi_bg);
-      color:var(--usi_text);
+    * {
+      box-sizing: border-box;
     }
 
-    * { box-sizing:border-box; }
-    img { max-width: 100%; }
-    iframe { width: 100%; height: 600px;}
-    textarea { white-space: pre-wrap; width:100%; height:300px; background:var(--usi_surface_alt); border:1px solid var(--usi_border); border-radius:8px; padding:12px; font-family:monospace; color:var(--usi_text); }
+    html {
+      font-size: 16px;
+    }
 
-
-    * { box-sizing: border-box; }
-    html { font-size: 16px; }
     body {
       margin: 0;
-      background: rgba(0, 0, 0, 0.9);
-      font-family: Inter, Arial, sans-serif;
+      padding: 24px;
+      background: var(--usi_bg);
+      color: var(--usi_text);
+      font-family: Inter, Helvetica, Arial, sans-serif;
       tab-size: 2;
     }
 
+    img {
+      display: block;
+      max-width: 100%;
+    }
+
+    iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #fff;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 300px;
+      padding: 12px;
+      border: 1px solid var(--usi_border);
+      border-radius: 8px;
+      background: var(--usi_surface_alt);
+      color: var(--usi_text);
+      font-family: monospace;
+      white-space: pre-wrap;
+      resize: vertical;
+    }
+
     .usi_preview_shell {
-      display:flex;
-      flex-direction:column;
-      gap:24px;
-      max-width:1400px;
-      margin:0 auto;
+      max-width: 1440px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
     }
 
     .usi_preview_header,
-    .usi_preview_panel,
     .usi_preview_gallery,
-    .usi_preview_code_card {
-      background:var(--usi_surface);
-      border:1px solid var(--usi_border);
-      border-radius:16px;
-      padding:20px;
-      display:flex;
-      flex-direction:column;
-      gap:14px;
+    .usi_preview_code_card,
+    .usi_preview_card {
+      background: var(--usi_surface);
+      border: 1px solid var(--usi_border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .usi_preview_header h1,
+    .usi_preview_header p,
+    .usi_preview_gallery h2,
+    .usi_preview_code_card h2,
+    .usi_preview_code_card p,
+    .usi_preview_card h3 {
+      margin-top: 0;
     }
 
     .usi_preview_grid {
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
-      gap:20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 20px;
+    }
+
+    .usi_preview_card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .usi_preview_card_action a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid var(--usi_border);
+      border-radius: 999px;
+      background: var(--usi_nav);
+      color: var(--usi_link);
+      text-decoration: none;
+      font-weight: 700;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .usi_preview_card_action a:hover {
+      background: var(--usi_nav_active);
+      border-color: var(--usi_link);
     }
 
     .usi_preview_frame {
-      height:720px;
-      border:1px solid var(--usi_border);
-      border-radius:12px;
-      background:var(--usi_surface_alt);
-      overflow:auto;
+      height: 720px;
+      border: 1px solid var(--usi_border);
+      border-radius: 12px;
+      background: var(--usi_surface_alt);
+      overflow: hidden;
+    }
+
+    .usi_preview_gallery_grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .usi_preview_gallery_item {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .usi_preview_gallery_item a {
+      display: block;
+      border: 1px solid var(--usi_border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--usi_surface);
+    }
+
+    .usi_preview_gallery_item img {
+      width: 100%;
+      height: 120px;
+      object-fit: contain;
+      background: var(--usi_media);
+    }
+
+    .usi_preview_gallery_item figcaption {
+      font-size: 12px;
+      color: var(--usi_muted);
+      word-break: break-word;
+    }
+
+    .usi_preview_code_grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .usi_preview_code_grid article {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .usi_preview_code_grid h3 {
+      margin: 0;
     }
   </style>
 </head>
-
 <body>
   <main class="usi_preview_shell">
-
-    <section class="usi_preview_header">
-      <h1>${escapeHtml(title)}</h1>
-      <p>Open the exported variants and review the generated flattened campaign code below.</p>
-    </section>
+    <h1>${escapeHtml(title)}</h1>
 
     ${galleryHtml}
 
@@ -149,9 +247,11 @@ export function renderPreviewIndex(
       ${previews
         .map(
           (preview) => `
-          <article class="usi_preview_panel">
+          <article class="usi_preview_card">
             <div class="usi_preview_card_action">
-              <a href="${preview.href}">${escapeHtml(preview.name)}</a>
+              <a href="${preview.href}" target="_blank" rel="noreferrer">
+                ${escapeHtml(preview.name)}
+              </a>
             </div>
             <div class="usi_preview_frame">
               <iframe
@@ -182,7 +282,6 @@ export function renderPreviewIndex(
         </article>
       </div>
     </section>
-
   </main>
 </body>
 </html>
