@@ -10,6 +10,7 @@ import {
 import { escapeHtml, escapeTemplateString, formatHtml } from "../utils/string";
 import { COMPONENT_BY_ID, COMPONENT_BY_ROLE } from "../constants";
 import { cssDeclarations, pxToEm, scalePx, textTransformFromCase, toPercent } from "../utils/css";
+import { GOOGLE_FONT_FAMILIES } from "./google-fonts-cache";
 import {
 	collectText,
 	findImageNodeId,
@@ -26,6 +27,7 @@ type RecursiveRenderContext = {
 	frameScale: number;
 	hideVisibleText: boolean;
 	excludedIds: Set<string>;
+	deliverablesPath?: string;
 	productGridAnchorId?: string;
 	summaryAnchorId?: string;
 	productHtml?: string;
@@ -69,7 +71,7 @@ const COMPONENT_RENDERERS: Record<string, ComponentRenderer> = {
 	},
 
 	media: {
-		renderHtml: (node, definition, hideVisibleText) => {
+		renderHtml: (node, definition, hideVisibleText, context) => {
 			if (!definition) return "";
 			const tag = definition.render.htmlTag;
 			const className = definition.render.className;
@@ -85,7 +87,12 @@ const COMPONENT_RENDERERS: Record<string, ComponentRenderer> = {
 			const altText = escapeHtml(
 				(node && componentText(node, definition)) || (node && node.name) || definition.label || "Image"
 			);
-			const imageSrc = PRODUCT_PLACEHOLDER_IMAGE;
+			const deliverablesPath =
+				context && typeof context.deliverablesPath === "string" ? String(context.deliverablesPath) : "";
+			const imageSrc =
+				node && node.imageAsset && deliverablesPath
+					? escapeHtml(deliverablesPath.replace(/\/$/, "") + "/" + node.imageAsset)
+					: PRODUCT_PLACEHOLDER_IMAGE;
 
 			return `
 			<div class="${className}">
@@ -106,6 +113,7 @@ const COMPONENT_RENDERERS: Record<string, ComponentRenderer> = {
 	margin: 0;
 	display: block;
 	overflow: hidden;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
@@ -148,16 +156,14 @@ ${htmlToCssClassName(className)} {
 	display: flex;
 	flex-direction: column;
 	gap: 0.5em;
+	${flattenedAbsolutePositionDeclarations(node, root)}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
 ${htmlToCssClassName(className)} .usi_field_input {
 	width: 100%;
 	padding: 0.875em 1em;
-	border: 1px solid #d0d0d0;
-	background: #fff;
-	color: #111;
-	${node.style.borderRadius != null ? "border-radius: " + String(node.style.borderRadius) + "px;" : ""}
+	${flattenedBoxDeclarations(node, frameScale, { width: "100%" })}
 }
 `;
 				})
@@ -193,13 +199,22 @@ ${htmlToCssClassName(className)} .usi_field_input {
 				.map(function (node) {
 					const definition = componentDefinitionForNode(node);
 					const className = definition ? definition.render.className : "usi_survey";
+					const promptNode = node.children[0];
+					const firstOptionNode = node.children[1];
+					const optionTextNode = firstTextDescendant(firstOptionNode) || firstOptionNode;
 					return `
 ${htmlToCssClassName(className)} {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	display: flex;
 	flex-direction: column;
 	gap: 0.75em;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+${htmlToCssClassName(className)} .usi_survey_prompt {
+	margin: 0;
+	${flattenedTextDeclarations(promptNode || node, frameScale)}
 }
 
 ${htmlToCssClassName(className)} .usi_survey_options {
@@ -215,6 +230,12 @@ ${htmlToCssClassName(className)} .usi_survey_option {
 	justify-content: center;
 	padding: 0.75em 1em;
 	cursor: pointer;
+	${flattenedBoxDeclarations(firstOptionNode || node, frameScale, {
+		display: "inline-flex",
+		"align-items": "center",
+		"justify-content": "center",
+		color: optionTextNode && optionTextNode.style.color ? optionTextNode.style.color : undefined
+	})}
 }
 `;
 				})
@@ -226,18 +247,30 @@ ${htmlToCssClassName(className)} .usi_survey_option {
 	coupon: {
 		renderHtml: (node, definition) => {
 			if (!node || !definition) return "";
-			const childrenText = node.children
-				.map(function (child) {
-					return componentText(child);
-				})
-				.filter(Boolean);
-			const code =
-				childrenText[0] || componentText(node, definition) || definition.render.fallbackText || "SAVE15";
-			const label = childrenText[1] || definition.render.buttonText || "Copy Code";
+			const visibleChildren = node.children.filter(function (child) {
+				return !child.ignored && child.visible;
+			});
+			const codeChild =
+				visibleChildren.find(function (child) {
+					return /save|coupon|code|offer/i.test(componentText(child));
+				}) || visibleChildren[1] || visibleChildren[0];
+			const buttonChild =
+				visibleChildren.find(function (child) {
+					return child !== codeChild;
+				}) || visibleChildren[0];
+			const code = codeChild ? componentText(codeChild) : componentText(node, definition) || definition.render.fallbackText || "SAVE15";
+			const label = buttonChild ? componentText(buttonChild) : definition.render.buttonText || "Copy Code";
+			const pieces = visibleChildren.length
+				? visibleChildren.map(function (child) {
+					if (child === codeChild) {
+						return `<div class="usi_coupon_code">${escapeHtml(code)}</div>`;
+					}
+					return `<button class="usi_coupon_button" type="button">${escapeHtml(child === buttonChild ? label : componentText(child))}</button>`;
+				}).join("")
+				: `<div class="usi_coupon_code">${escapeHtml(code)}</div><button class="usi_coupon_button" type="button">${escapeHtml(label)}</button>`;
 			return `
 				<section class="${definition.render.className}">
-					<div class="usi_coupon_code">${escapeHtml(code)}</div>
-					<button class="usi_coupon_button" type="button">${escapeHtml(label)}</button>
+					${pieces}
 				</section>
 			`.trim();
 		},
@@ -247,7 +280,15 @@ ${htmlToCssClassName(className)} .usi_survey_option {
 				.map(function (node) {
 					const definition = componentDefinitionForNode(node);
 					const className = definition ? definition.render.className : "usi_coupon";
-					const buttonNode = node.children[1];
+					const codeNode =
+						node.children.find(function (child) {
+							return /save|coupon|code|offer/i.test(componentText(child));
+						}) || node.children[0];
+					const buttonNode =
+						node.children.find(function (child) {
+							return child !== codeNode;
+						}) || node.children[1];
+					const codeTextNode = firstTextDescendant(codeNode) || codeNode;
 					return `
 ${htmlToCssClassName(className)} {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
@@ -255,14 +296,21 @@ ${htmlToCssClassName(className)} {
 	flex-wrap: wrap;
 	gap: 0.75em;
 	align-items: center;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
 ${htmlToCssClassName(className)} .usi_coupon_code {
 	padding: 0.75em 1em;
-	border: 1px solid #222;
-	background: #fff;
-	font-weight: 700;
+	${flattenedBoxDeclarations(codeNode || node, frameScale, {
+		"font-weight": 700,
+		color: codeTextNode && codeTextNode.style.color ? codeTextNode.style.color : undefined,
+		"text-shadow": codeTextNode && codeTextNode.style.boxShadow ? codeTextNode.style.boxShadow : undefined,
+		"-webkit-text-stroke":
+			codeTextNode && codeTextNode.style.borderColor
+				? String(codeTextNode.style.borderWidth || 1) + "px " + codeTextNode.style.borderColor
+				: undefined
+	 })}
 }
 
 ${htmlToCssClassName(className)} .usi_coupon_button {
@@ -297,12 +345,16 @@ ${htmlToCssClassName(className)} .usi_coupon_button {
 				.map(function (node) {
 					const definition = componentDefinitionForNode(node);
 					const className = definition ? definition.render.className : "usi_optin";
+					const checkboxNode = node.children[0];
+					const labelNode = node.children[1];
+					const labelTextNode = firstTextDescendant(labelNode) || labelNode;
 					return `
 ${htmlToCssClassName(className)} {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	display: flex;
 	gap: 0.625em;
 	align-items: center;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
@@ -311,13 +363,23 @@ ${htmlToCssClassName(className)} .usi_optin_input {
 	-webkit-appearance: none;
 	width: 1.125em;
 	height: 1.125em;
-	border: 1px solid currentColor;
-	background: #fff;
+	${flattenedBoxDeclarations(checkboxNode || node, frameScale, {
+		width: "1.125em",
+		height: "1.125em",
+		display: "inline-block",
+		"border-color":
+			checkboxNode && checkboxNode.style.borderColor
+				? checkboxNode.style.borderColor
+				: checkboxNode && checkboxNode.style.color
+					? checkboxNode.style.color
+					: undefined
+	})}
 	flex: 0 0 auto;
 }
 
 ${htmlToCssClassName(className)} .usi_optin_label {
 	display: inline-block;
+	${flattenedTextDeclarations(labelTextNode || node, frameScale)}
 }
 `;
 				})
@@ -337,13 +399,20 @@ ${htmlToCssClassName(className)} .usi_optin_label {
 				.map(function (node) {
 					const definition = componentDefinitionForNode(node);
 					const className = definition ? definition.render.className : "usi_countdown";
+					const digitsNode = firstTextDescendant(node) || node;
 					return `
 ${htmlToCssClassName(className)} {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
 	display: inline-flex;
 	padding: 0.625em 0.875em;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
-	font-weight: 700;
+	font-weight: ${digitsNode && digitsNode.style.fontWeight ? digitsNode.style.fontWeight : 700};
+	color: ${digitsNode && digitsNode.style.color ? digitsNode.style.color : "inherit"};
+}
+
+${htmlToCssClassName(className)} span {
+	${flattenedTextDeclarations(digitsNode, frameScale)}
 }
 `;
 				})
@@ -367,19 +436,20 @@ ${htmlToCssClassName(className)} {
 				.map(function (node) {
 					const definition = componentDefinitionForNode(node);
 					const className = definition ? definition.render.className : "usi_progress";
+					const fillNode = node.children[0];
 					return `
 ${htmlToCssClassName(className)} {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
-	height: 0.75em;
+	height: ${toPercent(node.bounds.height, root.bounds.height)};
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
-	border-radius: 999px;
 	overflow: hidden;
 }
 
 ${htmlToCssClassName(className)} .usi_progress_fill {
 	width: 55%;
 	height: 100%;
-	background: #222;
+	${flattenedBoxDeclarations(fillNode || node, frameScale, { height: "100%" })}
 }
 `;
 				})
@@ -642,7 +712,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
 					const imageRule = imageNode
 						? `
 .usi_product${index + 1} .usi_product_image {
-	width: 100%;
+	width: ${toPercent(imageNode.bounds.width, card.bounds.width)};
 	height: ${toPercent(imageNode.bounds.height, card.bounds.height)};
 	margin-left: 0;
 	margin-top: ${toPercent(imageNode.bounds.y - card.bounds.y, card.bounds.height)};
@@ -671,6 +741,8 @@ ${imageRule}
 	align-content: start;
 	align-items: start;
 	box-sizing: border-box;
+	/*flattenedAbsolutePositionDeclarations(nodes[0], root, { force: true, includeWidth: true, includeHeight: true })*/
+	${flattenedBoxDeclarations(nodes[0], frameScale)}
 }
 
 .usi_product {
@@ -701,18 +773,30 @@ ${imageRule}
 .usi_product_image {
 	position: relative;
 	display: block;
-	width: 100%;
+	width: ${
+		productImageNode && firstProductCard
+			? toPercent(productImageNode.bounds.width, firstProductCard.bounds.width)
+			: "100%"
+	};
+	height: ${
+		productImageNode && firstProductCard
+			? toPercent(productImageNode.bounds.height, firstProductCard.bounds.height)
+			: "auto"
+	};
 	min-width: 0;
 	overflow: hidden;
-	margin: auto;
-	max-width: 250px;
+	margin: 0;
+	align-self: flex-start;
 	${imageAspectRatio ? `aspect-ratio: ${imageAspectRatio};` : ""}
 	${
 		flattenedBoxDeclarations(productImageNode, frameScale, {
-			width: "100%",
 			position: "relative",
 			left: undefined,
-			top: undefined
+			top: undefined,
+			height:
+				productImageNode && firstProductCard
+					? toPercent(productImageNode.bounds.height, firstProductCard.bounds.height)
+					: undefined
 		}) || "width: 100%; position: relative;"
 	}
 }
@@ -746,11 +830,11 @@ ${imageRule}
 
 .usi_product_title {
 	margin: 0;
-	white-space: normal;
-	word-break: break-word;
+	white-space: pre-wrap;
+	word-break: normal;
 	${
 		flattenedTextDeclarations(productTitleNode, frameScale, {
-			"white-space": "normal",
+			"white-space": "pre-wrap",
 			"background-color": "transparent",
 			border: "none"
 		}) || "font-weight: 700;"
@@ -759,13 +843,13 @@ ${imageRule}
 
 .usi_product_subtitle {
 	margin: 0;
-	word-break: break-word;
+	word-break: normal;
 	${productSubtitleNodes && productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
 }
 
 .usi_product_price {
 	margin: 0;
-	word-break: break-word;
+	word-break: normal;
 	${flattenedTextDeclarations(productPriceNode, frameScale) || ""}
 }
 
@@ -775,10 +859,14 @@ ${imageRule}
 	align-items: center;
 	justify-content: center;
 	align-self: flex-start;
-	width: auto;
+	width: ${
+		productButtonNode && firstProductCard
+			? toPercent(productButtonNode.bounds.width, firstProductCard.bounds.width)
+			: "auto"
+	};
 	max-width: 100%;
 	padding: 0.75em 1em;
-	margin: auto;
+	margin: 0;
 	${
 		flattenedBoxDeclarations(productButtonNode, frameScale, {
 			display: "inline-flex",
@@ -809,6 +897,13 @@ ${productCardCss}
 				? (context.summaryDiscountNode as NormalizedNode | undefined)
 				: undefined;
 			const summaryTotalNode = context ? (context.summaryTotalNode as NormalizedNode | undefined) : undefined;
+			const subtotalLabelNode = firstTextDescendant(summarySubtotalNode);
+			const subtotalValueNode = lastTextDescendant(summarySubtotalNode);
+			const discountLabelNode = firstTextDescendant(summaryDiscountNode);
+			const discountValueNode = lastTextDescendant(summaryDiscountNode);
+			const totalLabelNode = firstTextDescendant(summaryTotalNode);
+			const totalValueNode = lastTextDescendant(summaryTotalNode);
+			const summaryTitleNode = firstTextDescendant(summaryNode) || summaryNode;
 
 			return `
 .usi_summary {
@@ -817,6 +912,7 @@ ${productCardCss}
 	display: flex;
 	flex-direction: column;
 	gap: 0.5em;
+	${flattenedAbsolutePositionDeclarations(summaryNode, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
@@ -824,7 +920,7 @@ ${productCardCss}
 	margin: 0 0 0.5em;
 	white-space: pre-wrap;
 	${
-		flattenedTextDeclarations(summaryNode, frameScale, {
+		flattenedTextDeclarations(summaryTitleNode, frameScale, {
 			"font-size": "1em",
 			"font-weight": 700,
 			"white-space": "pre-wrap"
@@ -844,12 +940,45 @@ ${productCardCss}
 	${flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
+.usi_price .usi_label,
+.usi_price .usi_value,
+.usi_discount .usi_label,
+.usi_discount .usi_value,
+.usi_new_price .usi_label,
+.usi_new_price .usi_value {
+	font-size: 1em;
+}
+
+.usi_price .usi_label {
+	${flattenedTextDeclarations(subtotalLabelNode || summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_price .usi_value {
+	${flattenedTextDeclarations(subtotalValueNode || summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
 .usi_discount {
 	${flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
+.usi_discount .usi_label {
+	${flattenedTextDeclarations(discountLabelNode || summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_discount .usi_value {
+	${flattenedTextDeclarations(discountValueNode || summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
 .usi_new_price {
 	${flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_new_price .usi_label {
+	${flattenedTextDeclarations(totalLabelNode || summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_new_price .usi_value {
+	${flattenedTextDeclarations(totalValueNode || summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
 .usi_label,
@@ -878,6 +1007,7 @@ ${productCardCss}
 		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			const node = nodes[0];
+			const textNode = firstTextDescendant(node) || node;
 			return `
 .usi_secondary_cta {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
@@ -886,7 +1016,8 @@ ${productCardCss}
 	justify-content: center;
 	padding: 0.75em 1em;
 	cursor: pointer;
-	${flattenedBoxDeclarations(node, frameScale)}
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
+	${flattenedBoxDeclarations(node, frameScale, { color: textNode && textNode.style.color ? textNode.style.color : undefined })}
 }
 `;
 		},
@@ -902,20 +1033,33 @@ ${productCardCss}
 		renderCss: (nodes, root, frameScale) => {
 			if (!nodes.length) return "";
 			const node = nodes[0];
+			const allTextNodes = textDescendants(node);
+			const baseTextNode = allTextNodes[0] || node;
+			const linkNode =
+				allTextNodes.find(function (child) {
+					return /privacy|policy/i.test(componentText(child));
+				}) || allTextNodes[allTextNodes.length - 1] || node;
 			return `
 .usi_disclaimer {
 	width: ${toPercent(node.bounds.width, root.bounds.width)};
-	width: 100%;
 	margin: 0;
 	font-size: 0.875em;
 	line-height: 1.4;
 	text-align: center;
-	margin: auto;
-	${flattenedTextDeclarations(node, frameScale)}
+	${flattenedAbsolutePositionDeclarations(node, root, {
+		force: true,
+		includeWidth: true,
+		pinBottom: node.bounds.y > root.bounds.height * 0.55
+	})}
+	${flattenedTextDeclarations(baseTextNode || node, frameScale)}
 }
 .usi_disclaimer a {
-	font-weight: bold;
-	text-decoration: underline;
+	${flattenedTextDeclarations(linkNode || node, frameScale, {
+		color: linkNode && linkNode.style.color ? linkNode.style.color : undefined,
+		"font-size": linkNode && linkNode.style.fontSize ? pxToEm(linkNode.style.fontSize, 16, frameScale) : undefined,
+		"font-weight": linkNode && linkNode.style.fontWeight ? linkNode.style.fontWeight : 700,
+		"text-decoration": "underline"
+	})}
 }
 `;
 		},
@@ -932,13 +1076,14 @@ ${productCardCss}
 		},
 		renderCss: (nodes, _root, frameScale, context?: Record<string, unknown>) => {
 			if (!nodes.length) return "";
-			const mainBounds = context ? (context.mainBounds as NodeBounds | undefined) : undefined;
 			const node = nodes[0];
-			if (!mainBounds) return "";
 			return `
 .usi_headline {
-	width: ${toPercent(node.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+	${flattenedAbsolutePositionDeclarations(node, context ? (context.rootBounds as NodeBounds | undefined) : undefined, {
+		force: true,
+		includeWidth: true
+	})}
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap", "max-width": "none" })}
 }
 `;
 		},
@@ -955,13 +1100,14 @@ ${productCardCss}
 		},
 		renderCss: (nodes, _root, frameScale, context?: Record<string, unknown>) => {
 			if (!nodes.length) return "";
-			const mainBounds = context ? (context.mainBounds as NodeBounds | undefined) : undefined;
 			const node = nodes[0];
-			if (!mainBounds) return "";
 			return `
 .usi_eyebrow {
-	width: ${toPercent(node.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+	${flattenedAbsolutePositionDeclarations(node, context ? (context.rootBounds as NodeBounds | undefined) : undefined, {
+		force: true,
+		includeWidth: true
+	})}
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap", "max-width": "none" })}
 }
 `;
 		},
@@ -978,13 +1124,14 @@ ${productCardCss}
 		},
 		renderCss: (nodes, _root, frameScale, context?: Record<string, unknown>) => {
 			if (!nodes.length) return "";
-			const mainBounds = context ? (context.mainBounds as NodeBounds | undefined) : undefined;
 			const node = nodes[0];
-			if (!mainBounds) return "";
 			return `
 .usi_subtext {
-	width: ${toPercent(node.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+	${flattenedAbsolutePositionDeclarations(node, context ? (context.rootBounds as NodeBounds | undefined) : undefined, {
+		force: true,
+		includeWidth: true
+	})}
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap", "max-width": "none" })}
 }
 `;
 		},
@@ -1014,6 +1161,7 @@ ${productCardCss}
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale, {
 		display: "flex",
 		"align-items": "center",
@@ -1048,7 +1196,7 @@ ${productCardCss}
 	display: block;
 	overflow: hidden;
 	text-indent: -9999px;
-	${flattenedBoxDeclarations(node, frameScale, { background: "none", border: "none" }) || "background:none;border:none;"}
+	${flattenedBoxDeclarations(closeNode, frameScale, { background: closeNode && closeNode.style.background ? closeNode.style.background : "none" }) || "background:none;"}
 }
 
 #usi_close::before {
@@ -1063,9 +1211,15 @@ ${productCardCss}
 		flattenedTextDeclarations(node, frameScale, {
 			background: "transparent",
 			border: "none",
+			color: node && (node.style.color || node.style.borderColor) ? node.style.color || node.style.borderColor : undefined,
 			"text-align": "center",
 			"line-height": "1"
 		}) || "background:transparent;border:none;text-align:center;line-height:1;"
+	}
+	${
+		node && node.style.borderColor
+			? `-webkit-text-stroke:${String(node.style.borderWidth || 1)}px ${node.style.borderColor}; text-shadow:-1px 0 ${node.style.borderColor}, 0 1px ${node.style.borderColor}, 1px 0 ${node.style.borderColor}, 0 -1px ${node.style.borderColor};`
+			: ""
 	}
 }
 
@@ -1171,7 +1325,9 @@ button#usi_close:focus {
 };
 
 function generateProductGridHtml(
-	products: Array<{ title?: string; subtitle?: string; price?: string; cta?: string }>
+	products: Array<{ title?: string; subtitle?: string; price?: string; cta?: string; imageAsset?: string }>,
+	isRuntime: boolean,
+	deliverablesPath?: string
 ): string {
 	if (!products.length) return "";
 
@@ -1181,6 +1337,9 @@ function generateProductGridHtml(
 			const fallbackSubtitle = escapeHtml(product.subtitle || "");
 			const fallbackPrice = escapeHtml(product.price || "");
 			const fallbackButton = escapeHtml(product.cta || "");
+			const fallbackImageSrc = product.imageAsset && deliverablesPath
+				? escapeHtml(deliverablesPath.replace(/\/$/, "") + "/" + product.imageAsset)
+				: PRODUCT_PLACEHOLDER_IMAGE;
 
 			const hasMeaningfulContent = !!fallbackSubtitle || !!fallbackPrice || !!fallbackButton;
 			if (!hasMeaningfulContent) return "";
@@ -1189,12 +1348,24 @@ function generateProductGridHtml(
 				<article class="usi_product_card usi_product usi_product${index + 1}">
 					<div class="usi_product_image">
 						<img
-							src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
-							alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}"
+							src="${
+								isRuntime
+									? `\${usi_cookies.get('usi_prod_image_${index + 1}') || '${fallbackImageSrc}'}`
+									: fallbackImageSrc
+							}"
+							alt="${
+								isRuntime
+									? `\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}`
+									: fallbackTitle || "Product"
+							}"
 						/>
 					</div>
 					<div class="usi_product_body">
-						<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle}')}</h3>
+						<h3 class="usi_product_title">${
+							isRuntime
+								? `\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle}')}`
+								: fallbackTitle
+						}</h3>
 						${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
 						${fallbackPrice ? `<p class="usi_product_price">${fallbackPrice}</p>` : ""}
 						${fallbackButton ? `<button class="usi_product_cta" type="button">${fallbackButton}</button>` : ""}
@@ -1272,26 +1443,44 @@ function renderComponentByKey(
 	return renderer.renderHtml(node, definition, hideVisibleText, context);
 }
 
-function renderExplicitComponentNode(node: NormalizedNode, hideVisibleText: boolean): string {
+function renderExplicitComponentNode(
+	node: NormalizedNode,
+	hideVisibleText: boolean,
+	root?: NormalizedNode,
+	frameScale = 1,
+	deliverablesPath = ""
+): string {
 	const definition = componentDefinitionForNode(node);
 	if (!definition) return "";
 
 	const idRenderer = COMPONENT_RENDERERS[definition.id];
 	if (idRenderer) {
-		return idRenderer.renderHtml(node, definition, hideVisibleText);
+		return idRenderer.renderHtml(node, definition, hideVisibleText, { deliverablesPath });
 	}
 
 	const kind = definition.render.kind;
 	const renderer = COMPONENT_RENDERERS[kind];
 
 	if (renderer) {
-		return renderer.renderHtml(node, definition, hideVisibleText);
+		return renderer.renderHtml(node, definition, hideVisibleText, { deliverablesPath });
 	}
 
 	const tag = definition.render.htmlTag;
-	const className = definition.render.className;
+	const className =
+		hideVisibleText && definition.render.kind === "text"
+			? definition.render.className + " usi_sr_only"
+			: definition.render.className;
 	const text = componentText(node, definition);
-	return `<${tag} class="${className}">${escapeHtml(text)}</${tag}>`;
+	const inlineStyle =
+		definition.render.kind === "text" && root
+			? [
+					flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true }),
+					flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })
+				]
+					.filter(Boolean)
+					.join("")
+			: "";
+	return `<${tag} class="${className}"${inlineStyle ? ` style="${inlineStyle}"` : ""}>${escapeHtml(text)}</${tag}>`;
 }
 
 function hasInsertedComponent(root: NormalizedNode, componentId: string): boolean {
@@ -1347,6 +1536,59 @@ function componentText(node: NormalizedNode, definition?: CommonComponentDefinit
 	return definition && definition.render.fallbackText ? definition.render.fallbackText : "";
 }
 
+function textDescendants(node: NormalizedNode | undefined): NormalizedNode[] {
+	if (!node) return [];
+	return flattenTree(node).filter(function (child) {
+		const text = String(child.text || "").trim();
+		return !!text && (child.type === "TEXT" || child.children.length === 0);
+	});
+}
+
+function firstTextDescendant(node: NormalizedNode | undefined): NormalizedNode | undefined {
+	return textDescendants(node)[0];
+}
+
+function lastTextDescendant(node: NormalizedNode | undefined): NormalizedNode | undefined {
+	const descendants = textDescendants(node);
+	return descendants.length ? descendants[descendants.length - 1] : undefined;
+}
+
+function firstChildWithBackground(node: NormalizedNode | undefined): NormalizedNode | undefined {
+	if (!node) return undefined;
+	return flattenTree(node).find(function (child) {
+		return !!child.style.background || !!child.style.borderColor || !!child.style.borderRadius;
+	});
+}
+
+function googleFontHeadTags(fontFamilies: string[]): string {
+	const googleFontSet = new Set(
+		GOOGLE_FONT_FAMILIES.map(function (font: string) {
+			return font.toLowerCase();
+		})
+	);
+	const families = Array.from(
+		new Set(
+			fontFamilies.filter(function (font) {
+				return googleFontSet.has(font.toLowerCase());
+			})
+		)
+	);
+	if (!families.length) return "";
+	const href =
+		"https://fonts.googleapis.com/css2?" +
+		families
+			.map(function (font) {
+				return "family=" + encodeURIComponent(font).replace(/%20/g, "+");
+			})
+			.join("&") +
+		"&display=swap";
+	return [
+		'<link rel="preconnect" href="https://fonts.googleapis.com">',
+		'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+		`<link href="${href}" rel="stylesheet">`
+	].join("\n\t\t");
+}
+
 function combineBounds(nodes: Array<NormalizedNode | undefined>): NodeBounds | undefined {
 	const filtered = nodes.filter(Boolean) as NormalizedNode[];
 	if (!filtered.length) return undefined;
@@ -1390,6 +1632,10 @@ function flattenedTextDeclarations(
 		Object.assign(
 			{
 				color: node.style.color,
+				"-webkit-text-stroke": node.style.borderColor
+					? String(node.style.borderWidth || 1) + "px " + node.style.borderColor
+					: undefined,
+				"text-shadow": node.style.boxShadow,
 				opacity: node.style.opacity !== 1 ? node.style.opacity : "",
 				"font-family": node.style.fontFamily
 					? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
@@ -1424,6 +1670,9 @@ function flattenedBoxDeclarations(
 					? String(node.style.borderWidth || 1) + "px solid " + node.style.borderColor
 					: undefined,
 				"border-radius": node.style.borderRadius ? String(node.style.borderRadius) + "px" : undefined,
+				"overflow-x": node.style.overflowX,
+				"overflow-y": node.style.overflowY,
+				"box-shadow": node.style.boxShadow,
 				opacity: node.style.opacity !== 1 ? node.style.opacity : "",
 				"font-family": node.style.fontFamily
 					? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
@@ -1441,6 +1690,31 @@ function flattenedBoxDeclarations(
 			extra || {}
 		)
 	);
+}
+
+function flattenedAbsolutePositionDeclarations(
+	node: NormalizedNode | undefined,
+	root: NormalizedNode | NodeBounds | undefined,
+	options?: { includeWidth?: boolean; includeHeight?: boolean; force?: boolean; pinBottom?: boolean }
+): string {
+	if (!node || !root) return "";
+	const rootBounds = "bounds" in root ? root.bounds : root;
+	if (!rootBounds || !rootBounds.width || !rootBounds.height) return "";
+
+	const isAbsolute = options && options.force ? true : node.layout.positioning === "ABSOLUTE";
+	if (!isAbsolute) return "";
+
+	const bottom = rootBounds.y + rootBounds.height - (node.bounds.y + node.bounds.height);
+
+	return cssDeclarations({
+		position: "absolute",
+		left: toPercent(node.bounds.x - rootBounds.x, rootBounds.width),
+		top: options && options.pinBottom ? undefined : toPercent(node.bounds.y - rootBounds.y, rootBounds.height),
+		bottom:
+			options && options.pinBottom ? toPercent(bottom, rootBounds.height) : undefined,
+		width: options && options.includeWidth ? toPercent(node.bounds.width, rootBounds.width) : undefined,
+		height: options && options.includeHeight ? toPercent(node.bounds.height, rootBounds.height) : undefined
+	});
 }
 
 function findDescendantRoleNode(root: NormalizedNode | undefined, role: ExportRole): NormalizedNode | undefined {
@@ -1687,19 +1961,22 @@ function inlineLayoutStyles(node: NormalizedNode, frameScale: number): string {
 
 	return cssDeclarations(styles);
 }
-// function inlinePositionStyles(
-// 	node: NormalizedNode,
-// 	root: NormalizedNode,
-// 	options?: { includeHeight?: boolean }
-// ): string {
-// 	return cssDeclarations({
-// 		position: "absolute",
-// 		left: toPercent(node.bounds.x - root.bounds.x, root.bounds.width),
-// 		top: toPercent(node.bounds.y - root.bounds.y, root.bounds.height),
-// 		width: "100%",//toPercent(node.bounds.width, root.bounds.width),
-// 		height: options && options.includeHeight ? toPercent(node.bounds.height, root.bounds.height) : undefined
-// 	});
-// }
+
+function inlinePositionStyles(
+	node: NormalizedNode,
+	root: NormalizedNode,
+	forceAbsolute: boolean
+): string {
+	if (!forceAbsolute && node.layout.positioning !== "ABSOLUTE") return "";
+
+	return cssDeclarations({
+		position: "absolute",
+		left: toPercent(node.bounds.x - root.bounds.x, root.bounds.width),
+		top: toPercent(node.bounds.y - root.bounds.y, root.bounds.height),
+		width: toPercent(node.bounds.width, root.bounds.width),
+		height: toPercent(node.bounds.height, root.bounds.height)
+	});
+}
 
 function collectRecursiveCss(
 	node: NormalizedNode,
@@ -1787,7 +2064,7 @@ function renderRecursiveNode(node: NormalizedNode, context: RecursiveRenderConte
 			const className = definition.render.className;
 
 			const inlineStyle = [
-				//inlinePositionStyles(node, context.root),
+				inlinePositionStyles(node, context.root, context.hideVisibleText),
 				inlineLayoutStyles(node, context.frameScale),
 				flattenedBoxDeclarations(node, context.frameScale)
 			]
@@ -1797,7 +2074,13 @@ function renderRecursiveNode(node: NormalizedNode, context: RecursiveRenderConte
 			return `<${tag} class="${className}"${inlineStyle ? ` style="${inlineStyle}"` : ""}>${childrenHtml}</${tag}>`;
 		}
 
-		return renderExplicitComponentNode(node, context.hideVisibleText);
+		return renderExplicitComponentNode(
+			node,
+			context.hideVisibleText,
+			context.root,
+			context.frameScale,
+			context.deliverablesPath || ""
+		);
 	}
 
 	if (isContainerLikeNode(node)) {
@@ -1805,7 +2088,7 @@ function renderRecursiveNode(node: NormalizedNode, context: RecursiveRenderConte
 		const className = recursiveClassName(node);
 
 		const inlineStyle = [
-			//inlinePositionStyles(node, context.root),
+			inlinePositionStyles(node, context.root, context.hideVisibleText),
 			inlineLayoutStyles(node, context.frameScale),
 			flattenedBoxDeclarations(node, context.frameScale)
 		]
@@ -2298,11 +2581,22 @@ export function renderFlattenedHtml(
 	root: NormalizedNode,
 	analysis: AnalysisResult,
 	imageFileName: string,
-	hideVisibleText: boolean
+	hideVisibleText: boolean,
+	deliverablesPath = ""
 ): FlattenedVariant {
 	const frameScale = 1;
 	const scaledRootWidth = scalePx(root.bounds.width, frameScale) || root.bounds.width;
 	const scaledRootHeight = scalePx(root.bounds.height, frameScale) || root.bounds.height;
+	const fontFamilies = Array.from(
+		new Set(
+			flattenTree(root)
+				.map(function (node) {
+					return String(node.style.fontFamily || "").trim();
+				})
+				.filter(Boolean)
+		)
+	);
+	const externalFontTags = googleFontHeadTags(fontFamilies);
 
 	const headlineNode = findNormalizedNodeById(root, analysis.headlineNodeId);
 	const subtextNode = findNormalizedNodeById(root, analysis.subtextNodeId);
@@ -2484,7 +2778,9 @@ export function renderFlattenedHtml(
 				(productCardNodes.length - 1)
 			: 0;
 	const gridColumns = Math.max(1, Math.min(productCardNodes.length || runtimeProducts.length || 1, 3));
-	const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts);
+	const previewProductHtml = generateProductGridHtml(runtimeProducts, false, deliverablesPath);
+	const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts, true, deliverablesPath);
+	const previewSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, false);
 	const runtimeSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, true);
 
 	const realMediaPanelNodes = mediaPanelNodes.filter(function (node) {
@@ -2577,10 +2873,11 @@ export function renderFlattenedHtml(
 				frameScale,
 				hideVisibleText,
 				excludedIds: recursiveExcludedIds,
+				deliverablesPath,
 				productGridAnchorId: hasProducts && productAnchorNode ? productAnchorNode.id : undefined,
 				summaryAnchorId: hasSummary && summaryAnchorNode ? summaryAnchorNode.id : undefined,
-				productHtml: runtimeProductHtmlRaw,
-				summaryHtml: runtimeSummaryHtml,
+				productHtml: previewProductHtml,
+				summaryHtml: previewSummaryHtml,
 				explicitOverrideHtmlById
 			});
 		})
@@ -2590,6 +2887,29 @@ export function renderFlattenedHtml(
 	const contentHTML = `
 		${closeNode ? renderComponentByKey("close_control", closeNode, COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
 		${recursiveContentHtml}
+		${hasProducts && !productAnchorNode ? renderComponentByKey("product_grid", undefined, COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: previewProductHtml }) : ""}
+		${hasSummary && !summaryAnchorNode ? renderComponentByKey("price_table", undefined, COMPONENT_BY_ID.price_table, hideVisibleText, { summaryHtml: previewSummaryHtml }) : ""}
+	`.trim();
+
+	const runtimeContentHTML = `
+		${closeNode ? renderComponentByKey("close_control", closeNode, COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
+		${root.children
+			.map(function (child) {
+				return renderRecursiveNode(child, {
+					root,
+					frameScale,
+					hideVisibleText,
+					excludedIds: recursiveExcludedIds,
+					deliverablesPath,
+					productGridAnchorId: hasProducts && productAnchorNode ? productAnchorNode.id : undefined,
+					summaryAnchorId: hasSummary && summaryAnchorNode ? summaryAnchorNode.id : undefined,
+					productHtml: runtimeProductHtmlRaw,
+					summaryHtml: runtimeSummaryHtml,
+					explicitOverrideHtmlById
+				});
+			})
+			.filter(Boolean)
+			.join("")}
 		${hasProducts && !productAnchorNode ? renderComponentByKey("product_grid", undefined, COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: runtimeProductHtmlRaw }) : ""}
 		${hasSummary && !summaryAnchorNode ? renderComponentByKey("price_table", undefined, COMPONENT_BY_ID.price_table, hideVisibleText, { summaryHtml: runtimeSummaryHtml }) : ""}
 	`.trim();
@@ -2604,13 +2924,13 @@ export function renderFlattenedHtml(
 
 	const textRegionCss = [
 		headlineText && headlineNode && mainBounds
-			? COMPONENT_RENDERERS.headline.renderCss([headlineNode], root, frameScale, { mainBounds })
+			? COMPONENT_RENDERERS.headline.renderCss([headlineNode], root, frameScale, { mainBounds, rootBounds: root.bounds })
 			: "",
 		eyebrowText && eyebrowNode && mainBounds
-			? COMPONENT_RENDERERS.eyebrow.renderCss([eyebrowNode], root, frameScale, { mainBounds })
+			? COMPONENT_RENDERERS.eyebrow.renderCss([eyebrowNode], root, frameScale, { mainBounds, rootBounds: root.bounds })
 			: "",
 		subtextText && subtextNode && mainBounds
-			? COMPONENT_RENDERERS.subtext.renderCss([subtextNode], root, frameScale, { mainBounds })
+			? COMPONENT_RENDERERS.subtext.renderCss([subtextNode], root, frameScale, { mainBounds, rootBounds: root.bounds })
 			: ""
 	].join("");
 
@@ -2730,7 +3050,7 @@ ${recursiveCss}
 	const js = `${runtimeJs}
 
 usi_js.display_vars.p1_html = \`
-${escapeTemplateString(formatFlattenedHtml(contentHTML))}
+${escapeTemplateString(formatFlattenedHtml(runtimeContentHTML))}
 \`;
 `;
 
@@ -2740,6 +3060,7 @@ ${escapeTemplateString(formatFlattenedHtml(contentHTML))}
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		${externalFontTags}
 		<title>Preview</title>
 		<style>
 		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}
@@ -2765,7 +3086,8 @@ ${escapeTemplateString(formatFlattenedHtml(contentHTML))}
 		css: css,
 		imageFileName: imageFileName,
 		js: js,
-		contentHTML: contentHTML
+		contentHTML: contentHTML,
+		runtimeContentHTML: runtimeContentHTML
 	};
 }
 
@@ -2817,11 +3139,11 @@ ${buildRuntimeJsForAnalysis(page.analysis)}
 `;
 		})
 		.join("\n");
-
+/*usi_js.display_vars.${page.key}_css = \` ${escapeTemplateString(page.variant.css)} \`;*/
 	const assignments = pages
 		.map(function (page) {
 			return `usi_js.display_vars.${page.key}_html = \`
-${escapeTemplateString(formatFlattenedHtml(page.variant.contentHTML))}
+${escapeTemplateString(formatFlattenedHtml(page.variant.runtimeContentHTML))}
 \`;
 `;
 		})

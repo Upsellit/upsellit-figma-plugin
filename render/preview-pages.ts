@@ -17,12 +17,23 @@ export function renderPreviewIndex(
   const cssPlaceholder = '__USI_INDEX_DEV_CSS__';
   const jsPlaceholder = '__USI_INDEX_DEV_JS__';
 
-  const galleryHtml = images.length
-    ? `
+  const mockupImages = images.filter(function (image) {
+    return /_mockup_1x\.(png|webp)$/i.test(image.name);
+  });
+  const deliverableImages = images.filter(function (image) {
+    return !/_mockup_1x\.(png|webp)$/i.test(image.name);
+  });
+
+  const renderGallerySection = function (
+    heading: string,
+    sectionImages: Array<{ name: string; href: string }>
+  ): string {
+    if (!sectionImages.length) return '';
+    return `
       <section class="usi_preview_gallery">
-        <h2>Images</h2>
+        <h2>${escapeHtml(heading)}</h2>
         <div class="usi_preview_gallery_grid">
-          ${images
+          ${sectionImages
             .map(
               (image) => `
               <figure class="usi_preview_gallery_item">
@@ -36,8 +47,15 @@ export function renderPreviewIndex(
             .join('')}
         </div>
       </section>
-    `
-    : '';
+    `;
+  };
+
+  const galleryHtml = [
+    renderGallerySection('Mockups', mockupImages),
+    renderGallerySection('Deliverables', deliverableImages),
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   const shell = formatHtml(`
 <!doctype html>

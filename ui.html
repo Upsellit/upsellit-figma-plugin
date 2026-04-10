@@ -561,13 +561,15 @@
   <script>
     const statusEl = document.getElementById('status');
     const exportBtn = document.getElementById('exportBtn');
-    const createAssetSourceBtn = document.getElementById('createAssetSourceBtn');
     const bannerStack = document.getElementById('bannerStack');
     const componentCatalog = document.getElementById('componentCatalog');
     const componentSearch = document.getElementById('componentSearch');
     const componentTabs = document.getElementById('componentTabs');
+
     let commonComponents = [];
     let activeComponentTab = 'all';
+    let exportInProgress = false;
+
     const componentTabOrder = ['all', 'shell', 'layout', 'content', 'action', 'product', 'summary', 'form', 'utility'];
     const componentTabLabels = {
       all: 'All',
@@ -580,6 +582,22 @@
       form: 'Forms',
       utility: 'Utility'
     };
+
+    function sendToPlugin(message) {
+      parent.postMessage(
+        {
+          pluginMessage: message
+        },
+        '*'
+      );
+    }
+
+    function setExportBusy(isBusy, label) {
+      exportInProgress = isBusy;
+      exportBtn.disabled = isBusy;
+      exportBtn.style.opacity = isBusy ? '0.7' : '1';
+      exportBtn.textContent = label || (isBusy ? 'Exporting...' : 'Export Package');
+    }
 
     function previewClassFor(component) {
       return component.id;
@@ -600,36 +618,41 @@
     function renderComponentCatalog(filterText) {
       componentCatalog.innerHTML = '';
       const query = String(filterText || '').trim().toLowerCase();
-      commonComponents.filter((component) => {
-        const category = String(component.category || '').toLowerCase();
-        if (activeComponentTab !== 'all' && category !== activeComponentTab) {
-          return false;
-        }
-        if (!query) return true;
-        return (
-          component.label.toLowerCase().includes(query) ||
-          component.role.toLowerCase().includes(query) ||
-          component.description.toLowerCase().includes(query) ||
-          category.includes(query)
-        );
-      }).sort((a, b) => {
-        const categoryCompare = String(a.category || '').localeCompare(String(b.category || ''));
-        if (categoryCompare !== 0) return categoryCompare;
-        return a.label.localeCompare(b.label);
-      }).forEach((component) => {
-        const item = document.createElement('div');
-        item.className = 'component-item';
-        item.innerHTML =
-          '<div class="component-preview ' + previewClassFor(component) + '"></div>' +
-          '<div class="component-meta">' +
-          '<strong>' + component.label + '</strong>' +
-          '<div class="component-role">' + component.role + '</div>' +
-          '<div class="component-category">' + component.category + '</div>' +
-          '<div class="component-desc">' + component.description + '</div>' +
-          '</div>' +
-          '<button class="component-add usi-add-component-btn" data-component-id="' + component.id + '" type="button">Add</button>';
-        componentCatalog.appendChild(item);
-      });
+
+      commonComponents
+        .filter((component) => {
+          const category = String(component.category || '').toLowerCase();
+          if (activeComponentTab !== 'all' && category !== activeComponentTab) {
+            return false;
+          }
+          if (!query) return true;
+          return (
+            String(component.label || '').toLowerCase().includes(query) ||
+            String(component.role || '').toLowerCase().includes(query) ||
+            String(component.description || '').toLowerCase().includes(query) ||
+            category.includes(query)
+          );
+        })
+        .sort((a, b) => {
+          const categoryCompare = String(a.category || '').localeCompare(String(b.category || ''));
+          if (categoryCompare !== 0) return categoryCompare;
+          return String(a.label || '').localeCompare(String(b.label || ''));
+        })
+        .forEach((component) => {
+          const item = document.createElement('div');
+          item.className = 'component-item';
+          item.innerHTML =
+            '<div class="component-preview ' + previewClassFor(component) + '"></div>' +
+            '<div class="component-meta">' +
+            '<strong>' + component.label + '</strong>' +
+            '<div class="component-role">' + component.role + '</div>' +
+            '<div class="component-category">' + component.category + '</div>' +
+            '<div class="component-desc">' + component.description + '</div>' +
+            '</div>' +
+            '<button class="component-add usi-add-component-btn" data-component-id="' + component.id + '" type="button">Add</button>';
+          componentCatalog.appendChild(item);
+        });
+
       if (!componentCatalog.children.length) {
         const empty = document.createElement('div');
         empty.className = 'empty';
@@ -641,25 +664,29 @@
     function initComponentCatalog() {
       renderComponentTabs();
       renderComponentCatalog('');
+
       componentCatalog.onclick = (event) => {
         const target = event.target;
         if (!target || !target.classList || !target.classList.contains('usi-add-component-btn')) return;
+
         const componentId = target.getAttribute('data-component-id');
         if (!componentId) return;
+
         statusEl.textContent = 'Adding asset component...';
-        parent.postMessage({
-          pluginMessage: {
-            type: 'insert-asset-component',
-            componentId: componentId
-          }
-        }, '*');
+        sendToPlugin({
+          type: 'insert-asset-component',
+          componentId: componentId
+        });
       };
+
       componentSearch.oninput = () => {
         renderComponentCatalog(componentSearch.value);
       };
+
       componentTabs.onclick = (event) => {
         const target = event.target;
         if (!target || !target.classList || !target.classList.contains('component-tab')) return;
+
         const tabId = target.getAttribute('data-tab-id') || 'all';
         activeComponentTab = tabId;
         renderComponentTabs();
@@ -675,7 +702,10 @@
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
     }
 
     function base64ToBlob(base64, mimeType) {
@@ -719,11 +749,12 @@
     async function convertPngBase64ToWebpBase64(base64) {
       const pngBlob = base64ToBlob(base64, 'image/png');
       const img = await loadImageFromBlob(pngBlob);
+
       const canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth || img.width;
       canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
 
+      const ctx = canvas.getContext('2d');
       if (!ctx) {
         throw new Error('Canvas 2D context unavailable.');
       }
@@ -765,12 +796,15 @@
         if (file.base64 && /\.png$/i.test(file.name)) {
           const nextName = file.name.replace(/\.png$/i, '.webp');
           const nextBase64 = await convertPngBase64ToWebpBase64(file.base64);
+
           replacements.push([file.name, nextName]);
+
           const baseName = getBaseName(file.name);
           const nextBaseName = getBaseName(nextName);
           if (baseName && nextBaseName && baseName !== file.name) {
             replacements.push([baseName, nextBaseName]);
           }
+
           convertedFiles.push({
             name: nextName,
             base64: nextBase64,
@@ -794,10 +828,12 @@
 
     function renderBanners(messages) {
       bannerStack.innerHTML = '';
+
       if (!messages || !messages.length) {
         bannerStack.style.display = 'none';
         return;
       }
+
       bannerStack.style.display = 'flex';
       messages.forEach((message) => {
         const node = document.createElement('div');
@@ -807,14 +843,57 @@
       });
     }
 
-    exportBtn.onclick = () => {
+    function requestExport() {
+      if (exportInProgress) return;
       renderBanners([]);
+      setExportBusy(true, 'Exporting...');
       statusEl.textContent = 'Analyzing selection...';
-      parent.postMessage({
-        pluginMessage: {
-          type: 'export-campaigns'
+
+      sendToPlugin({
+        type: 'export-campaigns'
+      });
+    }
+
+    async function handlePackageReady(payload) {
+      try {
+        const report = payload.report || {};
+        renderBanners(report.warnings || []);
+
+        statusEl.textContent = 'Converting PNG assets to WebP...';
+        const files = await convertPackageAssetsToWebp(payload.files || []);
+
+        statusEl.textContent = 'Creating ZIP...';
+        const zip = new JSZip();
+
+        for (const file of files) {
+          if (typeof file.text === 'string') {
+            zip.file(file.name, file.text);
+          } else if (file.base64) {
+            zip.file(file.name, file.base64, { base64: true });
+          }
         }
-      }, '*');
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        downloadBlob(blob, payload.packageFileName || 'campaign-export.zip');
+
+        statusEl.textContent = 'Downloaded Export Package.';
+        setExportBusy(false, 'Export Package');
+
+        sendToPlugin({
+          type: 'export-finished'
+        });
+      } catch (error) {
+        const message =
+          error && error.message ? error.message : 'Failed to build ZIP package.';
+
+        renderBanners([message]);
+        statusEl.textContent = message;
+        setExportBusy(false, 'Export Package');
+      }
+    }
+
+    exportBtn.onclick = () => {
+      requestExport();
     };
 
     window.onmessage = async (event) => {
@@ -824,6 +903,7 @@
       if (msg.type === 'error') {
         renderBanners([msg.message || 'Export failed.']);
         statusEl.textContent = msg.message || 'Export failed.';
+        setExportBusy(false, 'Export Package');
         return;
       }
 
@@ -845,45 +925,16 @@
       }
 
       if (msg.type === 'package-ready') {
-        try {
-          const payload = msg.payload;
-          const report = payload.report || {};
-          const schema = payload.schema || {};
-
-          renderBanners(report.warnings || []);
-
-          statusEl.textContent = 'Converting PNG assets to WebP...';
-          const files = await convertPackageAssetsToWebp(payload.files || []);
-
-          statusEl.textContent = 'Creating ZIP...';
-          const zip = new JSZip();
-
-          for (const file of files) {
-            if (typeof file.text === 'string') {
-              zip.file(file.name, file.text);
-            } else if (file.base64) {
-              zip.file(file.name, file.base64, { base64: true });
-            }
-          }
-
-          const blob = await zip.generateAsync({ type: 'blob' });
-          downloadBlob(blob, payload.packageFileName || 'campaign-export.zip');
-
-          statusEl.textContent = 'Downloaded Export Package.';
-        } catch (error) {
-          renderBanners([error && error.message ? error.message : 'Failed to build ZIP package.']);
-          statusEl.textContent =
-            error && error.message ? error.message : 'Failed to build ZIP package.';
-        }
+        await handlePackageReady(msg.payload || {});
+        return;
       }
     };
 
     initComponentCatalog();
-    parent.postMessage({
-      pluginMessage: {
-        type: 'get-component-catalog'
-      }
-    }, '*');
+
+    sendToPlugin({
+      type: 'get-component-catalog'
+    });
   </script>
 </body>
 

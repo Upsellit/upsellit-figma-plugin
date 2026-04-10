@@ -105,6 +105,7 @@ export function normalizeNode(node: AnyNode): NormalizedNode {
 		layout: {
 			mode: node.layoutMode || 'NONE',
 			wrap: !!node.layoutWrap && node.layoutWrap !== 'NO_WRAP',
+			positioning: node.layoutPositioning === 'ABSOLUTE' ? 'ABSOLUTE' : 'AUTO',
 			gap: typeof node.itemSpacing === 'number' ? node.itemSpacing : 0,
 			padding: {
 				top: getPaddingValue(node, 'paddingTop'),

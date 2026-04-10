@@ -7,10 +7,41 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const constants_1 = require("./constants");
 const index_1 = require("./figma/index");
 const packaging_1 = require("./render/packaging");
+async function renderExports() {
+    const roots = (0, index_1.getExportRoots)(figma.currentPage.selection, figma.currentPage);
+    if (!roots.length) {
+        figma.ui.postMessage({
+            type: 'error',
+            message: 'Select one exportable node, or leave nothing selected to export all top-level frames on the current page.',
+        });
+        return;
+    }
+    try {
+        figma.notify('Preparing export...');
+        const payload = await (0, packaging_1.buildExport)(roots);
+        figma.ui.postMessage({
+            type: 'package-ready',
+            payload,
+        });
+        figma.notify('Export package ready.');
+    }
+    catch (error) {
+        figma.ui.postMessage({
+            type: 'error',
+            message: error && error.message ? String(error.message) : 'Export failed.',
+        });
+    }
+}
 figma.showUI(__html__, {
     width: 440,
     height: 880,
     themeColors: true,
+});
+figma.on('run', async () => {
+    if (figma.command === 'export') {
+        await renderExports();
+        return;
+    }
 });
 figma.ui.onmessage = async function (msg) {
     if (!msg)
@@ -33,33 +64,24 @@ figma.ui.onmessage = async function (msg) {
         catch (error) {
             figma.ui.postMessage({
                 type: 'error',
-                message: error && error.message ? String(error.message) : 'Failed to add asset component.',
+                message: error && error.message
+                    ? String(error.message)
+                    : 'Failed to add asset component.',
             });
         }
         return;
     }
     if (msg.type === 'export-campaigns') {
-        const roots = (0, index_1.getExportRoots)(figma.currentPage.selection, figma.currentPage);
-        if (!roots.length) {
-            figma.ui.postMessage({
-                type: 'error',
-                message: 'Select one exportable node, or leave nothing selected to export all top-level frames on the current page.',
-            });
-            return;
-        }
-        try {
-            const payload = await (0, packaging_1.buildExport)(roots);
-            figma.ui.postMessage({
-                type: 'package-ready',
-                payload: payload,
-            });
-        }
-        catch (error) {
-            figma.ui.postMessage({
-                type: 'error',
-                message: error && error.message ? String(error.message) : 'Export failed.',
-            });
-        }
+        await renderExports();
+        return;
+    }
+    if (msg.type === 'export-finished') {
+        figma.closePlugin('Export complete');
+        return;
+    }
+    if (msg.type === 'close-plugin') {
+        figma.closePlugin();
+        return;
     }
 };
 },
@@ -91,52 +113,60 @@ exports.COMMON_COMPONENTS = [
         htmlTag: "article",
         className: "usi_modal",
         region: "shell",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("sidebar_shell", "Sidebar Shell", "modal-root", "Tall narrow modal shell for sidebar layouts.", "shell", {
         htmlTag: "article",
         className: "usi_modal usi_modal_sidebar",
         region: "shell",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("bottom_bar_shell", "Bottom Bar Shell", "modal-root", "Wide low shell for bottom-bar layouts.", "shell", {
         htmlTag: "article",
         className: "usi_modal usi_modal_bottom_bar",
         region: "shell",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("content_stack", "Content Stack", "content", "Primary content wrapper inside the shell.", "layout", {
         htmlTag: "section",
         className: "usi_modal_inner",
         region: "main",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("headline_block", "Headline", "headline", "Primary title copy.", "content", {
         htmlTag: "h1",
         className: "usi_headline",
         region: "main",
         kind: "text",
-        fallbackText: "Please Input Headline Here."
+        fallbackText: "Please Input Headline Here.",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("subtext_block", "Subtext", "subtext", "Supporting body copy.", "content", {
         htmlTag: "p",
         className: "usi_subtext",
         region: "main",
         kind: "text",
-        fallbackText: "Subtext copy here."
+        fallbackText: "Subtext copy here.",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("eyebrow_block", "Eyebrow", "eyebrow", "Small label above the headline.", "content", {
         htmlTag: "p",
         className: "usi_eyebrow",
         region: "main",
         kind: "text",
-        fallbackText: "FROM YOUR CART"
+        fallbackText: "FROM YOUR CART",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("divider", "Divider", "divider", "Simple horizontal separator between sections.", "content", {
         htmlTag: "hr",
         className: "usi_divider",
         region: "main",
-        kind: "media"
+        kind: "media",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("primary_button", "Primary CTA", "cta", "Primary action button.", "action", {
         htmlTag: "button",
@@ -144,7 +174,7 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "button",
         buttonText: "Redeem Now",
-        flattened: { liveText: true, textBaked: false }
+        flattened: { liveText: false, textBaked: false }
     }),
     component("thank_you_button", "Thank You Button", "cta", "Primary thank-you action for follow-up pages.", "action", {
         htmlTag: "button",
@@ -152,53 +182,83 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "button",
         buttonText: "Thank You",
-        flattened: { liveText: true, textBaked: true }
+        flattened: { liveText: false, textBaked: false }
     }),
     component("no_thanks_button", "No Thanks Button", "secondary-cta", "Secondary dismissal action.", "action", {
         htmlTag: "button",
         className: "usi_secondary_cta usi_no_thanks",
         region: "main",
         kind: "button",
-        buttonText: "No Thanks"
+        buttonText: "No Thanks",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_grid", "Product Grid", "product-list", "Repeated products container.", "product", {
         htmlTag: "section",
         className: "usi_products",
         region: "aside",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: false }
+    }),
+    component("recommendation_grid", "Recommendation Grid", "product-list", "Recommendation-focused repeated products container.", "product", {
+        htmlTag: "section",
+        className: "usi_products usi_recommendation_grid",
+        region: "aside",
+        kind: "container",
+        flattened: { liveText: false, textBaked: false }
+    }),
+    component("page_left", "Page Left", "content", "Left-side page container.", "layout", {
+        htmlTag: "button",
+        className: "usi_page_left",
+        region: "main",
+        kind: "button",
+        buttonText: "‹",
+        flattened: { liveText: false, textBaked: false }
+    }),
+    component("page_right", "Page Right", "content", "Right-side page container.", "layout", {
+        htmlTag: "button",
+        className: "usi_page_right",
+        region: "aside",
+        kind: "button",
+        buttonText: "›",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_card", "Product Card", "product-card", "Single product tile.", "product", {
         htmlTag: "article",
         className: "usi_product_card",
         region: "product",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_image", "Product Image", "product-image", "Product image slot.", "product", {
         htmlTag: "div",
         className: "usi_product_image",
         region: "product",
-        kind: "media"
+        kind: "media",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_title", "Product Title", "product-title", "Product title text.", "product", {
         htmlTag: "h3",
         className: "usi_product_title",
         region: "product",
         kind: "text",
-        fallbackText: "Product Name"
+        fallbackText: "Product Name",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_subtitle", "Product Subtitle", "product-subtitle", "Secondary product text.", "product", {
         htmlTag: "p",
         className: "usi_product_meta",
         region: "product",
         kind: "text",
-        fallbackText: "Product details"
+        fallbackText: "Product details",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_price", "Product Price", "product-price", "Displayed product price.", "product", {
         htmlTag: "p",
         className: "usi_product_price",
         region: "product",
         kind: "text",
-        fallbackText: "$XX.XX"
+        fallbackText: "$XX.XX",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("product_button", "Product Button", "product-cta", "CTA within a product card.", "action", {
         htmlTag: "button",
@@ -206,34 +266,38 @@ exports.COMMON_COMPONENTS = [
         region: "product",
         kind: "button",
         buttonText: "View Item",
-        flattened: { liveText: true, textBaked: false }
+        flattened: { liveText: false, textBaked: false }
     }),
     component("price_table", "Price Table", "summary", "Summary pricing block.", "summary", {
         htmlTag: "section",
         className: "usi_summary",
         region: "summary",
-        kind: "container"
+        kind: "container",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("price_subtotal", "Subtotal Row", "summary-subtotal", "Subtotal row.", "summary", {
         htmlTag: "div",
         className: "usi_price usi_summary_row",
         region: "summary",
         kind: "text",
-        fallbackText: "Subtotal: $XX.XX"
+        fallbackText: "Subtotal: $XX.XX",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("price_discount", "Discount Row", "summary-discount", "Discount row.", "summary", {
         htmlTag: "div",
         className: "usi_discount usi_summary_row",
         region: "summary",
         kind: "text",
-        fallbackText: "Discount: -$XX.XX"
+        fallbackText: "Discount: -$XX.XX",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("price_total", "Total Row", "summary-total", "Total row.", "summary", {
         htmlTag: "div",
         className: "usi_new_price usi_summary_row",
         region: "summary",
         kind: "text",
-        fallbackText: "Total: $XX.XX"
+        fallbackText: "Total: $XX.XX",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("email_input", "Email Input", "email-input", "Email capture field for lead forms.", "form", {
         htmlTag: "label",
@@ -241,7 +305,8 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "input",
         inputType: "email",
-        fallbackText: "Enter your email"
+        fallbackText: "Enter your email",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("phone_input", "Phone Input", "phone-input", "Phone capture field.", "form", {
         htmlTag: "label",
@@ -249,14 +314,16 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "input",
         inputType: "tel",
-        fallbackText: "Enter your phone number"
+        fallbackText: "Enter your phone number",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("survey_block", "Survey Block", "survey", "Survey prompt with answer options.", "form", {
         htmlTag: "section",
         className: "usi_survey",
         region: "main",
         kind: "survey",
-        fallbackText: "How likely are you to purchase today?"
+        fallbackText: "How likely are you to purchase today?",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("copy_coupon", "Copy Coupon", "copy-coupon", "Coupon code block with copy action.", "utility", {
         htmlTag: "section",
@@ -264,7 +331,8 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "coupon",
         fallbackText: "SAVE15",
-        buttonText: "Copy Code"
+        buttonText: "Copy Code",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("optin_component", "Opt-In", "optin", "Checkbox or opt-in consent row.", "form", {
         htmlTag: "label",
@@ -272,40 +340,45 @@ exports.COMMON_COMPONENTS = [
         region: "main",
         kind: "optin",
         fallbackText: "Yes, send me updates and offers.",
-        flattened: { liveText: true, textBaked: false }
+        flattened: { liveText: false, textBaked: false }
     }),
     component("countdown_timer", "Countdown Timer", "countdown", "Urgency timer display.", "utility", {
         htmlTag: "div",
         className: "usi_countdown",
         region: "main",
         kind: "countdown",
-        fallbackText: "09:59"
+        fallbackText: "09:59",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("progress_bar", "Progress Bar", "progress", "Visual progress indicator.", "utility", {
         htmlTag: "div",
         className: "usi_progress",
         region: "main",
-        kind: "progress"
+        kind: "progress",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("close_control", "Close Button", "close-button", "Dismiss control.", "action", {
         htmlTag: "button",
         className: "usi_close_button",
         region: "shell",
         kind: "button",
-        buttonText: "×"
+        buttonText: "×",
+        flattened: { liveText: false, textBaked: true }
     }),
     component("disclaimer_text", "Disclaimer", "disclaimer", "Legal or privacy copy.", "content", {
         htmlTag: "p",
         className: "usi_disclaimer",
         region: "main",
         kind: "text",
-        fallbackText: "We use your information in accordance with our <a href=\"#\">Privacy Policy</a>."
+        fallbackText: "We use your information in accordance with our <a href=\"#\">Privacy Policy</a>.",
+        flattened: { liveText: false, textBaked: false }
     }),
     component("media_panel", "Media Panel", "image", "Decorative or supporting media region.", "content", {
         htmlTag: "div",
         className: "usi_media_panel",
         region: "aside",
-        kind: "media"
+        kind: "media",
+        flattened: { liveText: false, textBaked: true }
     })
 ];
 exports.COMPONENT_ROLE_MAP = exports.COMMON_COMPONENTS.reduce(function (map, item) {
@@ -344,11 +417,12 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walkScenePaths = exports.validateSelection = exports.setPluginMeta = exports.paintToCss = exports.hasImageFill = exports.getYearMonth = exports.getSizingMode = exports.getPluginMeta = exports.getPaddingValue = exports.getNodeChildren = exports.getExportRoots = exports.getExportPageNodes = exports.getBounds = exports.firstVisiblePaint = exports.extractTextStyle = exports.extractNodeText = exports.extractNodeStyle = exports.exportNodeImage = exports.exportMockupPng = exports.exportFlattenedBackgroundVariant = exports.buildPathMaps = exports.buildNodeIndex = exports.buildExportPackageName = exports.buildExportBaseName = exports.attachProductAssets = void 0;
+exports.walkScenePaths = exports.validateSelection = exports.setPluginMeta = exports.paintToCss = exports.hasImageFill = exports.getYearMonth = exports.getSizingMode = exports.getPluginMeta = exports.getPaddingValue = exports.getNodeChildren = exports.getExportRoots = exports.getExportPageNodes = exports.getBounds = exports.firstVisiblePaint = exports.extractTextStyle = exports.extractNodeText = exports.extractNodeStyle = exports.exportNodeImage = exports.exportMockupPng = exports.exportFlattenedBackgroundVariant = exports.buildPathMaps = exports.buildNodeIndex = exports.buildExportPackageName = exports.buildExportBaseName = exports.attachProductAssets = exports.attachMediaAssets = void 0;
 __exportStar(require("./theme"), exports);
 __exportStar(require("./builders"), exports);
 __exportStar(require("./analyze"), exports);
 var export_1 = require("./export");
+Object.defineProperty(exports, "attachMediaAssets", { enumerable: true, get: function () { return export_1.attachMediaAssets; } });
 Object.defineProperty(exports, "attachProductAssets", { enumerable: true, get: function () { return export_1.attachProductAssets; } });
 Object.defineProperty(exports, "buildExportBaseName", { enumerable: true, get: function () { return export_1.buildExportBaseName; } });
 Object.defineProperty(exports, "buildExportPackageName", { enumerable: true, get: function () { return export_1.buildExportPackageName; } });
@@ -889,6 +963,38 @@ async function buildAssetComponentNode(componentId) {
             node = grid;
             break;
         }
+        case 'recommendation_grid': {
+            const grid = figma.createFrame();
+            grid.name = 'Recommendation Grid';
+            grid.layoutMode = 'VERTICAL';
+            grid.primaryAxisSizingMode = 'AUTO';
+            grid.counterAxisSizingMode = 'AUTO';
+            grid.itemSpacing = 16;
+            grid.fills = [];
+            (0, shared_1.applyComponentMeta)(grid, componentId);
+            grid.setPluginData('exportCollection', 'products');
+            for (let index = 0; index < 3; index += 1) {
+                grid.appendChild(await buildProductCardFrame(theme));
+            }
+            node = grid;
+            break;
+        }
+        case 'page_left':
+        case 'page_right': {
+            const button = await createButtonFrame(componentId === 'page_left' ? 'Page Left' : 'Page Right', componentId === 'page_left' ? '‹' : '›', componentId, theme, {
+                paddingX: 0,
+                paddingY: 0,
+                background: '#1F5FA8',
+                color: '#FFFFFF',
+                backgroundVariable: theme.button2,
+            });
+            button.primaryAxisSizingMode = 'FIXED';
+            button.counterAxisSizingMode = 'FIXED';
+            button.resize(32, 32);
+            button.cornerRadius = 16;
+            node = button;
+            break;
+        }
         case 'product_card':
             node = await buildProductCardFrame(theme);
             break;
@@ -1251,6 +1357,7 @@ function normalizeNode(node) {
         layout: {
             mode: node.layoutMode || 'NONE',
             wrap: !!node.layoutWrap && node.layoutWrap !== 'NO_WRAP',
+            positioning: node.layoutPositioning === 'ABSOLUTE' ? 'ABSOLUTE' : 'AUTO',
             gap: typeof node.itemSpacing === 'number' ? node.itemSpacing : 0,
             padding: {
                 top: (0, export_1.getPaddingValue)(node, 'paddingTop'),
@@ -1500,6 +1607,7 @@ exports.exportMockupPng = exportMockupPng;
 exports.buildNodeIndex = buildNodeIndex;
 exports.getExportPageNodes = getExportPageNodes;
 exports.attachProductAssets = attachProductAssets;
+exports.attachMediaAssets = attachMediaAssets;
 exports.exportFlattenedBackgroundVariant = exportFlattenedBackgroundVariant;
 exports.validateSelection = validateSelection;
 exports.getExportRoots = getExportRoots;
@@ -1511,6 +1619,7 @@ Object.defineProperty(exports, "getPluginMeta", { enumerable: true, get: functio
 Object.defineProperty(exports, "setPluginMeta", { enumerable: true, get: function () { return shared_1.setPluginMeta; } });
 const tree_1 = require("../utils/tree");
 const analyze_1 = require("./analyze");
+const constants_1 = require("../constants");
 function getYearMonth() {
     const now = new Date();
     const yy = String(now.getFullYear()).slice(-2);
@@ -1628,6 +1737,58 @@ function extractNodeStyle(node) {
     const strokes = node.strokes !== figma.mixed ? node.strokes : undefined;
     const fill = firstVisiblePaint(fills);
     const stroke = firstVisiblePaint(strokes);
+    let overflowX;
+    let overflowY;
+    if (node && node.clipsContent === true) {
+        overflowX = 'hidden';
+        overflowY = 'hidden';
+    }
+    const overflowDirection = String(node && node.overflowDirection ? node.overflowDirection : '').toUpperCase();
+    if (overflowDirection === 'HORIZONTAL_SCROLLING') {
+        overflowX = 'auto';
+        overflowY = overflowY || 'hidden';
+    }
+    else if (overflowDirection === 'VERTICAL_SCROLLING') {
+        overflowY = 'auto';
+        overflowX = overflowX || 'hidden';
+    }
+    else if (overflowDirection === 'HORIZONTAL_AND_VERTICAL_SCROLLING') {
+        overflowX = 'auto';
+        overflowY = 'auto';
+    }
+    let boxShadow;
+    if (Array.isArray(node && node.effects)) {
+        const shadows = node.effects
+            .filter(function (effect) {
+            return effect && effect.visible !== false && (effect.type === 'DROP_SHADOW' || effect.type === 'LAYER_BLUR');
+        })
+            .map(function (effect) {
+            if (effect.type === 'LAYER_BLUR' && typeof effect.radius === 'number') {
+                return '0 0 ' + effect.radius + 'px rgba(255, 255, 255, 0.55)';
+            }
+            const color = effect.color || { r: 0, g: 0, b: 0, a: 0.25 };
+            const alpha = color.a == null ? 1 : color.a;
+            const x = effect.offset && typeof effect.offset.x === 'number' ? effect.offset.x : 0;
+            const y = effect.offset && typeof effect.offset.y === 'number' ? effect.offset.y : 0;
+            const blur = typeof effect.radius === 'number' ? effect.radius : 0;
+            return (x +
+                'px ' +
+                y +
+                'px ' +
+                blur +
+                'px rgba(' +
+                Math.round((color.r || 0) * 255) +
+                ', ' +
+                Math.round((color.g || 0) * 255) +
+                ', ' +
+                Math.round((color.b || 0) * 255) +
+                ', ' +
+                alpha +
+                ')');
+        })
+            .filter(Boolean);
+        boxShadow = shadows.length ? shadows.join(', ') : undefined;
+    }
     return Object.assign({
         background: paintToCss(fill),
         borderColor: paintToCss(stroke),
@@ -1635,6 +1796,9 @@ function extractNodeStyle(node) {
         borderRadius: typeof node.cornerRadius === 'number' && !Number.isNaN(node.cornerRadius)
             ? node.cornerRadius
             : undefined,
+        overflowX: overflowX,
+        overflowY: overflowY,
+        boxShadow: boxShadow,
         opacity: typeof node.opacity === 'number' ? node.opacity : undefined,
     }, extractTextStyle(node));
 }
@@ -1700,14 +1864,26 @@ function buildNodeIndex(root) {
 function getExportPageNodes(rootNode) {
     const children = (0, shared_1.getNodeChildren)(rootNode);
     const pages = [];
-    const wanted = ['p1', 'p2', 'p3'];
-    for (let index = 0; index < wanted.length; index += 1) {
-        const key = wanted[index];
-        const match = children.find(function (child) {
-            return String(child && child.name ? child.name : '').trim().toLowerCase() === key;
-        });
-        if (match)
-            pages.push({ key: key, node: match });
+    const namedPages = children
+        .map(function (child) {
+        const rawName = String(child && child.name ? child.name : '').trim().toLowerCase();
+        const match = rawName.match(/(?:^|-)p(\d+)$/);
+        if (!match)
+            return null;
+        return {
+            key: 'p' + String(Number(match[1])),
+            order: Number(match[1]),
+            node: child,
+        };
+    })
+        .filter(function (page) {
+        return page !== null;
+    })
+        .sort(function (a, b) {
+        return a.order - b.order;
+    });
+    for (let index = 0; index < namedPages.length; index += 1) {
+        pages.push({ key: namedPages[index].key, node: namedPages[index].node });
     }
     if (!pages.length) {
         pages.push({ key: 'p1', node: rootNode });
@@ -1745,23 +1921,59 @@ async function attachProductAssets(products, nodeIndex, exportBaseName) {
     }
     return assets;
 }
-async function exportFlattenedBackgroundVariant(rootNode, dynamicNodeIds, alwaysHiddenNodeIds, removeAllText, fileName, uniqueIds) {
+async function attachMediaAssets(root, nodeIndex, exportBaseName) {
+    const mediaNodes = (0, tree_1.flattenTree)(root).filter(function (node) {
+        return (!node.ignored &&
+            node.detectedRole === 'image' &&
+            node.componentOverride === 'media_panel');
+    });
+    const mediaAssets = mediaNodes.map(function (node, index) {
+        return {
+            name: node.name || 'Media ' + String(index + 1),
+            _imageNodeId: node.id,
+        };
+    });
+    const assets = [];
+    const seen = new Set();
+    for (let index = 0; index < mediaAssets.length; index += 1) {
+        const mediaAsset = mediaAssets[index];
+        if (!mediaAsset._imageNodeId || seen.has(mediaAsset._imageNodeId))
+            continue;
+        const sourceNode = nodeIndex.get(mediaAsset._imageNodeId);
+        if (!sourceNode || !hasImageFill(sourceNode))
+            continue;
+        const assetName = exportBaseName + '-media-' + (index + 1) + '.png';
+        const asset = await exportNodeImage(sourceNode, assetName);
+        if (!asset)
+            continue;
+        const targetNode = mediaNodes.find(function (node) {
+            return node.id === mediaAsset._imageNodeId;
+        });
+        if (targetNode) {
+            targetNode.imageAsset = assetName;
+        }
+        mediaAsset.imageAsset = assetName;
+        assets.push(asset);
+        seen.add(mediaAsset._imageNodeId);
+    }
+    return assets;
+}
+async function exportFlattenedBackgroundVariant(rootNode, alwaysHiddenNodeIds, variant, fileName, uniqueIds) {
     if (!rootNode || typeof rootNode.clone !== 'function')
         return null;
     const clone = rootNode.clone();
     const pathMaps = buildPathMaps(rootNode);
-    const disclaimerIds = new Set();
-    const inputIds = new Set();
     const normalizedRoot = (0, analyze_1.normalizeNode)(rootNode);
-    (0, tree_1.flattenTree)(normalizedRoot).forEach(function (node) {
-        if (node.componentOverride === 'disclaimer_text') {
-            disclaimerIds.add(node.id);
-        }
-        if (node.componentOverride === 'email_input' || node.componentOverride === 'phone_input') {
-            inputIds.add(node.id);
-        }
+    const componentHiddenIds = (0, tree_1.flattenTree)(normalizedRoot)
+        .filter(function (node) {
+        const definition = (node.componentOverride && constants_1.COMPONENT_BY_ID[node.componentOverride]) ||
+            (node.detectedRole && node.detectedRole !== 'other' ? constants_1.COMPONENT_BY_ROLE[node.detectedRole] : undefined);
+        return !!(definition && definition.render && definition.render.flattened && definition.render.flattened[variant] === false);
+    })
+        .map(function (node) {
+        return node.id;
     });
-    const hidePaths = uniqueIds(dynamicNodeIds.concat(alwaysHiddenNodeIds).concat(Array.from(disclaimerIds)))
+    const hidePaths = uniqueIds(componentHiddenIds.concat(alwaysHiddenNodeIds))
         .map(function (id) {
         return pathMaps.idToPath.get(id) || '';
     })
@@ -1778,37 +1990,6 @@ async function exportFlattenedBackgroundVariant(rootNode, dynamicNodeIds, always
             else {
                 node.visible = false;
             }
-        }
-        if (removeAllText) {
-            walkScenePaths(clone, function (node) {
-                if (node.type !== 'TEXT')
-                    return;
-                if ('opacity' in node && typeof node.opacity === 'number') {
-                    node.opacity = 0;
-                }
-                else {
-                    node.visible = false;
-                }
-            });
-            // Hide all subcomponents for background-only export
-            function hideChildren(node) {
-                if ('children' in node && Array.isArray(node.children)) {
-                    for (const child of node.children) {
-                        if (child.type === 'TEXT')
-                            continue; // Skip text nodes to keep them visible
-                        if (inputIds.has(child.id))
-                            continue; // Keep input backgrounds visible
-                        if ('opacity' in child && typeof child.opacity === 'number') {
-                            child.opacity = 0;
-                        }
-                        else {
-                            child.visible = false;
-                        }
-                        hideChildren(child);
-                    }
-                }
-            }
-            hideChildren(clone);
         }
         return await exportNodeImage(clone, fileName);
     }
@@ -1861,7 +2042,16 @@ function getExportRoots(selection, page) {
         const seen = new Set();
         const frames = [];
         for (let index = 0; index < selectedRoots.length; index += 1) {
-            const nextFrames = collectExportFrames(selectedRoots[index]);
+            const selectedRoot = selectedRoots[index];
+            if (getExportPageNodes(selectedRoot).length > 1) {
+                const id = String(selectedRoot.id || '');
+                if (!id || seen.has(id))
+                    continue;
+                seen.add(id);
+                frames.push(selectedRoot);
+                continue;
+            }
+            const nextFrames = collectExportFrames(selectedRoot);
             for (let frameIndex = 0; frameIndex < nextFrames.length; frameIndex += 1) {
                 const frame = nextFrames[frameIndex];
                 const id = String(frame.id || '');
@@ -2170,33 +2360,29 @@ const index_2 = require("./index");
 const string_1 = require("../utils/string");
 async function buildExportFilesForNode(rootNode, filePrefix) {
     const exportBaseName = (0, index_1.buildExportBaseName)(rootNode);
+    const deliverablesRootFolder = 'deliverables';
     const mockupRootFolder = 'mockups';
     const liveTextRootFolder = 'live_text_images';
     const textBakedRootFolder = 'text_baked_images';
     const nodeIndex = (0, index_1.buildNodeIndex)(rootNode);
     const analysis = (0, analyze_1.analyzeSelection)(rootNode);
     const sourceFrameName = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-    const pageNodes = (0, index_1.getExportPageNodes)(rootNode);
     const assetTheme = await (0, index_1.getAssetThemeSnapshot)();
     const mockupAsset = await (0, index_1.exportMockupPng)(rootNode, exportBaseName + '_mockup_1x.png');
     const assets = await (0, index_1.attachProductAssets)(analysis.schema.products, nodeIndex, exportBaseName);
+    const mediaAssets = await (0, index_1.attachMediaAssets)(analysis.ast, nodeIndex, exportBaseName);
     const flattenedTextAssetName = exportBaseName + '.png';
     const flattenedLiveAssetName = exportBaseName + '.png';
-    const flattenedTextAsset = await (0, index_1.exportFlattenedBackgroundVariant)(rootNode, (0, tree_1.uniqueIds)(analysis.dynamicNodeIds), [], false, flattenedTextAssetName, tree_1.uniqueIds);
-    const flattenedLiveAsset = await (0, index_1.exportFlattenedBackgroundVariant)(rootNode, (0, tree_1.uniqueIds)(analysis.dynamicNodeIds), [], true, flattenedLiveAssetName, tree_1.uniqueIds);
-    const flattenedTextVariant = (0, index_2.renderFlattenedHtml)(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true);
-    const flattenedLiveVariant = (0, index_2.renderFlattenedHtml)(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false);
-    const pageVariants = [];
-    for (let index = 0; index < pageNodes.length; index += 1) {
-        const pageAnalysis = (0, analyze_1.analyzeSelection)(pageNodes[index].node);
-        const pageVariant = (0, index_2.renderFlattenedHtml)(pageAnalysis.ast, pageAnalysis, '', false);
-        pageVariants.push({
-            key: pageNodes[index].key,
-            variant: pageVariant,
-            analysis: pageAnalysis,
-        });
-    }
-    const usiJsFile = (0, index_2.buildUsiJsFile)(pageVariants);
+    const flattenedTextAsset = await (0, index_1.exportFlattenedBackgroundVariant)(rootNode, [], 'textBaked', flattenedTextAssetName, tree_1.uniqueIds);
+    const flattenedLiveAsset = await (0, index_1.exportFlattenedBackgroundVariant)(rootNode, [], 'liveText', flattenedLiveAssetName, tree_1.uniqueIds);
+    const flattenedTextVariant = (0, index_2.renderFlattenedHtml)(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true, '../' + deliverablesRootFolder);
+    const flattenedLiveVariant = (0, index_2.renderFlattenedHtml)(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false, '../' + deliverablesRootFolder);
+    const usiJsFile = flattenedLiveVariant.js;
+    const allDeliverableAssets = [...assets, ...mediaAssets].filter(function (asset, index, collection) {
+        return collection.findIndex(function (candidate) {
+            return candidate.name === asset.name;
+        }) === index;
+    });
     const images = [];
     if (mockupAsset)
         images.push({ name: mockupAsset.name, href: '../' + mockupRootFolder + '/' + mockupAsset.name });
@@ -2204,8 +2390,8 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
         images.push({ name: flattenedLiveAsset.name, href: '../' + liveTextRootFolder + '/' + flattenedLiveAsset.name });
     if (flattenedTextAsset)
         images.push({ name: flattenedTextAsset.name, href: '../' + textBakedRootFolder + '/' + flattenedTextAsset.name });
-    for (let index = 0; index < assets.length; index += 1) {
-        images.push({ name: assets[index].name, href: assets[index].name });
+    for (let index = 0; index < allDeliverableAssets.length; index += 1) {
+        images.push({ name: allDeliverableAssets[index].name, href: '../' + deliverablesRootFolder + '/' + allDeliverableAssets[index].name });
     }
     const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
     const formattedDevCss = (0, string_1.formatFileText)('devmode.css', flattenedTextVariant.css);
@@ -2213,7 +2399,7 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
     const previewHtml = (0, index_2.renderPreviewIndex)(previewTitle, images, {
         bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
         cssSource: formattedDevCss,
-        jsSource: formattedDevJs
+        jsSource: usiJsFile
     });
     console.log(previewHtml);
     const prefixed = function (name) {
@@ -2248,7 +2434,9 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
         ...(mockupAsset ? [rootBinary(mockupRootFolder, mockupAsset)] : []),
         ...(flattenedTextAsset ? [rootBinary(textBakedRootFolder, flattenedTextAsset)] : []),
         ...(flattenedLiveAsset ? [rootBinary(liveTextRootFolder, flattenedLiveAsset)] : []),
-        ...assets.map(prefixedBinary),
+        ...allDeliverableAssets.map(function (asset) {
+            return rootBinary(deliverablesRootFolder, asset);
+        }),
     ];
     const formattedFiles = files.map(function (file) {
         if (!('text' in file))
@@ -2278,7 +2466,7 @@ async function buildExportFilesForNode(rootNode, filePrefix) {
                 mockup: mockupAsset ? mockupRootFolder + '/' + mockupAsset.name : undefined,
                 flattenedLive: flattenedLiveAsset ? liveTextRootFolder + '/' + flattenedLiveAsset.name : undefined,
                 flattenedTextBaked: flattenedTextAsset ? textBakedRootFolder + '/' + flattenedTextAsset.name : undefined,
-                productAssets: assets.map(function (asset) { return asset.name; }),
+                productAssets: allDeliverableAssets.map(function (asset) { return deliverablesRootFolder + '/' + asset.name; }),
                 previewPages: ['index.html', 'flattened_live_text.html', 'flattened_text_baked.html'],
                 cssFiles: ['css/styles.css', 'css/flattened_live_text.css', 'css/flattened_text_baked.css'],
                 jsFiles: ['js/usi_js.js', 'js/flattened_text_baked.js'],
@@ -2787,12 +2975,20 @@ function renderPreviewIndex(title, images, devMode) {
     ];
     const cssPlaceholder = '__USI_INDEX_DEV_CSS__';
     const jsPlaceholder = '__USI_INDEX_DEV_JS__';
-    const galleryHtml = images.length
-        ? `
+    const mockupImages = images.filter(function (image) {
+        return /_mockup_1x\.(png|webp)$/i.test(image.name);
+    });
+    const deliverableImages = images.filter(function (image) {
+        return !/_mockup_1x\.(png|webp)$/i.test(image.name);
+    });
+    const renderGallerySection = function (heading, sectionImages) {
+        if (!sectionImages.length)
+            return '';
+        return `
       <section class="usi_preview_gallery">
-        <h2>Images</h2>
+        <h2>${(0, string_1.escapeHtml)(heading)}</h2>
         <div class="usi_preview_gallery_grid">
-          ${images
+          ${sectionImages
             .map((image) => `
               <figure class="usi_preview_gallery_item">
                 <a href="${image.href}" target="_blank" rel="noreferrer">
@@ -2804,8 +3000,14 @@ function renderPreviewIndex(title, images, devMode) {
             .join('')}
         </div>
       </section>
-    `
-        : '';
+    `;
+    };
+    const galleryHtml = [
+        renderGallerySection('Mockups', mockupImages),
+        renderGallerySection('Deliverables', deliverableImages),
+    ]
+        .filter(Boolean)
+        .join('\n');
     const shell = (0, string_1.formatHtml)(`
 <!doctype html>
 <html lang="en">
@@ -3064,6 +3266,7 @@ exports.buildUsiJsFile = buildUsiJsFile;
 const string_1 = require("../utils/string");
 const constants_1 = require("../constants");
 const css_1 = require("../utils/css");
+const google_fonts_cache_1 = require("./google-fonts-cache");
 const tree_1 = require("../utils/tree");
 const PRODUCT_PLACEHOLDER_IMAGE = "https://placehold.co/600x400/EEE/31343C";
 const INCLUDE_DEBUG_NODE_CLASSES = false;
@@ -3103,7 +3306,7 @@ const COMPONENT_RENDERERS = {
         shouldRender: () => true
     },
     media: {
-        renderHtml: (node, definition, hideVisibleText) => {
+        renderHtml: (node, definition, hideVisibleText, context) => {
             if (!definition)
                 return "";
             const tag = definition.render.htmlTag;
@@ -3115,7 +3318,10 @@ const COMPONENT_RENDERERS = {
                 return `<div class="${className}" aria-hidden="true"></div>`;
             }
             const altText = (0, string_1.escapeHtml)((node && componentText(node, definition)) || (node && node.name) || definition.label || "Image");
-            const imageSrc = PRODUCT_PLACEHOLDER_IMAGE;
+            const deliverablesPath = context && typeof context.deliverablesPath === "string" ? String(context.deliverablesPath) : "";
+            const imageSrc = node && node.imageAsset && deliverablesPath
+                ? (0, string_1.escapeHtml)(deliverablesPath.replace(/\/$/, "") + "/" + node.imageAsset)
+                : PRODUCT_PLACEHOLDER_IMAGE;
             return `
 			<div class="${className}">
 				<img src="${imageSrc}" alt="${altText}" />
@@ -3137,6 +3343,7 @@ const COMPONENT_RENDERERS = {
 	margin: 0;
 	display: block;
 	overflow: hidden;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
@@ -3180,16 +3387,14 @@ ${htmlToCssClassName(className)} {
 	display: flex;
 	flex-direction: column;
 	gap: 0.5em;
+	${flattenedAbsolutePositionDeclarations(node, root)}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
 ${htmlToCssClassName(className)} .usi_field_input {
 	width: 100%;
 	padding: 0.875em 1em;
-	border: 1px solid #d0d0d0;
-	background: #fff;
-	color: #111;
-	${node.style.borderRadius != null ? "border-radius: " + String(node.style.borderRadius) + "px;" : ""}
+	${flattenedBoxDeclarations(node, frameScale, { width: "100%" })}
 }
 `;
             })
@@ -3225,13 +3430,22 @@ ${htmlToCssClassName(className)} .usi_field_input {
                 .map(function (node) {
                 const definition = componentDefinitionForNode(node);
                 const className = definition ? definition.render.className : "usi_survey";
+                const promptNode = node.children[0];
+                const firstOptionNode = node.children[1];
+                const optionTextNode = firstTextDescendant(firstOptionNode) || firstOptionNode;
                 return `
 ${htmlToCssClassName(className)} {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: flex;
 	flex-direction: column;
 	gap: 0.75em;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
+}
+
+${htmlToCssClassName(className)} .usi_survey_prompt {
+	margin: 0;
+	${flattenedTextDeclarations(promptNode || node, frameScale)}
 }
 
 ${htmlToCssClassName(className)} .usi_survey_options {
@@ -3247,6 +3461,12 @@ ${htmlToCssClassName(className)} .usi_survey_option {
 	justify-content: center;
 	padding: 0.75em 1em;
 	cursor: pointer;
+	${flattenedBoxDeclarations(firstOptionNode || node, frameScale, {
+                    display: "inline-flex",
+                    "align-items": "center",
+                    "justify-content": "center",
+                    color: optionTextNode && optionTextNode.style.color ? optionTextNode.style.color : undefined
+                })}
 }
 `;
             })
@@ -3258,17 +3478,28 @@ ${htmlToCssClassName(className)} .usi_survey_option {
         renderHtml: (node, definition) => {
             if (!node || !definition)
                 return "";
-            const childrenText = node.children
-                .map(function (child) {
-                return componentText(child);
-            })
-                .filter(Boolean);
-            const code = childrenText[0] || componentText(node, definition) || definition.render.fallbackText || "SAVE15";
-            const label = childrenText[1] || definition.render.buttonText || "Copy Code";
+            const visibleChildren = node.children.filter(function (child) {
+                return !child.ignored && child.visible;
+            });
+            const codeChild = visibleChildren.find(function (child) {
+                return /save|coupon|code|offer/i.test(componentText(child));
+            }) || visibleChildren[1] || visibleChildren[0];
+            const buttonChild = visibleChildren.find(function (child) {
+                return child !== codeChild;
+            }) || visibleChildren[0];
+            const code = codeChild ? componentText(codeChild) : componentText(node, definition) || definition.render.fallbackText || "SAVE15";
+            const label = buttonChild ? componentText(buttonChild) : definition.render.buttonText || "Copy Code";
+            const pieces = visibleChildren.length
+                ? visibleChildren.map(function (child) {
+                    if (child === codeChild) {
+                        return `<div class="usi_coupon_code">${(0, string_1.escapeHtml)(code)}</div>`;
+                    }
+                    return `<button class="usi_coupon_button" type="button">${(0, string_1.escapeHtml)(child === buttonChild ? label : componentText(child))}</button>`;
+                }).join("")
+                : `<div class="usi_coupon_code">${(0, string_1.escapeHtml)(code)}</div><button class="usi_coupon_button" type="button">${(0, string_1.escapeHtml)(label)}</button>`;
             return `
 				<section class="${definition.render.className}">
-					<div class="usi_coupon_code">${(0, string_1.escapeHtml)(code)}</div>
-					<button class="usi_coupon_button" type="button">${(0, string_1.escapeHtml)(label)}</button>
+					${pieces}
 				</section>
 			`.trim();
         },
@@ -3279,7 +3510,13 @@ ${htmlToCssClassName(className)} .usi_survey_option {
                 .map(function (node) {
                 const definition = componentDefinitionForNode(node);
                 const className = definition ? definition.render.className : "usi_coupon";
-                const buttonNode = node.children[1];
+                const codeNode = node.children.find(function (child) {
+                    return /save|coupon|code|offer/i.test(componentText(child));
+                }) || node.children[0];
+                const buttonNode = node.children.find(function (child) {
+                    return child !== codeNode;
+                }) || node.children[1];
+                const codeTextNode = firstTextDescendant(codeNode) || codeNode;
                 return `
 ${htmlToCssClassName(className)} {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
@@ -3287,14 +3524,20 @@ ${htmlToCssClassName(className)} {
 	flex-wrap: wrap;
 	gap: 0.75em;
 	align-items: center;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
 ${htmlToCssClassName(className)} .usi_coupon_code {
 	padding: 0.75em 1em;
-	border: 1px solid #222;
-	background: #fff;
-	font-weight: 700;
+	${flattenedBoxDeclarations(codeNode || node, frameScale, {
+                    "font-weight": 700,
+                    color: codeTextNode && codeTextNode.style.color ? codeTextNode.style.color : undefined,
+                    "text-shadow": codeTextNode && codeTextNode.style.boxShadow ? codeTextNode.style.boxShadow : undefined,
+                    "-webkit-text-stroke": codeTextNode && codeTextNode.style.borderColor
+                        ? String(codeTextNode.style.borderWidth || 1) + "px " + codeTextNode.style.borderColor
+                        : undefined
+                })}
 }
 
 ${htmlToCssClassName(className)} .usi_coupon_button {
@@ -3330,12 +3573,16 @@ ${htmlToCssClassName(className)} .usi_coupon_button {
                 .map(function (node) {
                 const definition = componentDefinitionForNode(node);
                 const className = definition ? definition.render.className : "usi_optin";
+                const checkboxNode = node.children[0];
+                const labelNode = node.children[1];
+                const labelTextNode = firstTextDescendant(labelNode) || labelNode;
                 return `
 ${htmlToCssClassName(className)} {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: flex;
 	gap: 0.625em;
 	align-items: center;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
 }
 
@@ -3344,13 +3591,22 @@ ${htmlToCssClassName(className)} .usi_optin_input {
 	-webkit-appearance: none;
 	width: 1.125em;
 	height: 1.125em;
-	border: 1px solid currentColor;
-	background: #fff;
+	${flattenedBoxDeclarations(checkboxNode || node, frameScale, {
+                    width: "1.125em",
+                    height: "1.125em",
+                    display: "inline-block",
+                    "border-color": checkboxNode && checkboxNode.style.borderColor
+                        ? checkboxNode.style.borderColor
+                        : checkboxNode && checkboxNode.style.color
+                            ? checkboxNode.style.color
+                            : undefined
+                })}
 	flex: 0 0 auto;
 }
 
 ${htmlToCssClassName(className)} .usi_optin_label {
 	display: inline-block;
+	${flattenedTextDeclarations(labelTextNode || node, frameScale)}
 }
 `;
             })
@@ -3371,13 +3627,20 @@ ${htmlToCssClassName(className)} .usi_optin_label {
                 .map(function (node) {
                 const definition = componentDefinitionForNode(node);
                 const className = definition ? definition.render.className : "usi_countdown";
+                const digitsNode = firstTextDescendant(node) || node;
                 return `
 ${htmlToCssClassName(className)} {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
 	display: inline-flex;
 	padding: 0.625em 0.875em;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
-	font-weight: 700;
+	font-weight: ${digitsNode && digitsNode.style.fontWeight ? digitsNode.style.fontWeight : 700};
+	color: ${digitsNode && digitsNode.style.color ? digitsNode.style.color : "inherit"};
+}
+
+${htmlToCssClassName(className)} span {
+	${flattenedTextDeclarations(digitsNode, frameScale)}
 }
 `;
             })
@@ -3402,19 +3665,20 @@ ${htmlToCssClassName(className)} {
                 .map(function (node) {
                 const definition = componentDefinitionForNode(node);
                 const className = definition ? definition.render.className : "usi_progress";
+                const fillNode = node.children[0];
                 return `
 ${htmlToCssClassName(className)} {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
-	height: 0.75em;
+	height: ${(0, css_1.toPercent)(node.bounds.height, root.bounds.height)};
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale)}
-	border-radius: 999px;
 	overflow: hidden;
 }
 
 ${htmlToCssClassName(className)} .usi_progress_fill {
 	width: 55%;
 	height: 100%;
-	background: #222;
+	${flattenedBoxDeclarations(fillNode || node, frameScale, { height: "100%" })}
 }
 `;
             })
@@ -3693,7 +3957,7 @@ ${htmlToCssClassName(className)} .usi_progress_fill {
                 const imageRule = imageNode
                     ? `
 .usi_product${index + 1} .usi_product_image {
-	width: 100%;
+	width: ${(0, css_1.toPercent)(imageNode.bounds.width, card.bounds.width)};
 	height: ${(0, css_1.toPercent)(imageNode.bounds.height, card.bounds.height)};
 	margin-left: 0;
 	margin-top: ${(0, css_1.toPercent)(imageNode.bounds.y - card.bounds.y, card.bounds.height)};
@@ -3722,6 +3986,8 @@ ${imageRule}
 	align-content: start;
 	align-items: start;
 	box-sizing: border-box;
+	/*flattenedAbsolutePositionDeclarations(nodes[0], root, { force: true, includeWidth: true, includeHeight: true })*/
+	${flattenedBoxDeclarations(nodes[0], frameScale)}
 }
 
 .usi_product {
@@ -3749,17 +4015,24 @@ ${imageRule}
 .usi_product_image {
 	position: relative;
 	display: block;
-	width: 100%;
+	width: ${productImageNode && firstProductCard
+                ? (0, css_1.toPercent)(productImageNode.bounds.width, firstProductCard.bounds.width)
+                : "100%"};
+	height: ${productImageNode && firstProductCard
+                ? (0, css_1.toPercent)(productImageNode.bounds.height, firstProductCard.bounds.height)
+                : "auto"};
 	min-width: 0;
 	overflow: hidden;
-	margin: auto;
-	max-width: 250px;
+	margin: 0;
+	align-self: flex-start;
 	${imageAspectRatio ? `aspect-ratio: ${imageAspectRatio};` : ""}
 	${flattenedBoxDeclarations(productImageNode, frameScale, {
-                width: "100%",
                 position: "relative",
                 left: undefined,
-                top: undefined
+                top: undefined,
+                height: productImageNode && firstProductCard
+                    ? (0, css_1.toPercent)(productImageNode.bounds.height, firstProductCard.bounds.height)
+                    : undefined
             }) || "width: 100%; position: relative;"}
 }
 
@@ -3792,10 +4065,10 @@ ${imageRule}
 
 .usi_product_title {
 	margin: 0;
-	white-space: normal;
-	word-break: break-word;
+	white-space: pre-wrap;
+	word-break: normal;
 	${flattenedTextDeclarations(productTitleNode, frameScale, {
-                "white-space": "normal",
+                "white-space": "pre-wrap",
                 "background-color": "transparent",
                 border: "none"
             }) || "font-weight: 700;"}
@@ -3803,13 +4076,13 @@ ${imageRule}
 
 .usi_product_subtitle {
 	margin: 0;
-	word-break: break-word;
+	word-break: normal;
 	${productSubtitleNodes && productSubtitleNodes[0] ? flattenedTextDeclarations(productSubtitleNodes[0], frameScale) : "color: #666;"}
 }
 
 .usi_product_price {
 	margin: 0;
-	word-break: break-word;
+	word-break: normal;
 	${flattenedTextDeclarations(productPriceNode, frameScale) || ""}
 }
 
@@ -3819,10 +4092,12 @@ ${imageRule}
 	align-items: center;
 	justify-content: center;
 	align-self: flex-start;
-	width: auto;
+	width: ${productButtonNode && firstProductCard
+                ? (0, css_1.toPercent)(productButtonNode.bounds.width, firstProductCard.bounds.width)
+                : "auto"};
 	max-width: 100%;
 	padding: 0.75em 1em;
-	margin: auto;
+	margin: 0;
 	${flattenedBoxDeclarations(productButtonNode, frameScale, {
                 display: "inline-flex",
                 "align-items": "center",
@@ -3851,6 +4126,13 @@ ${productCardCss}
                 ? context.summaryDiscountNode
                 : undefined;
             const summaryTotalNode = context ? context.summaryTotalNode : undefined;
+            const subtotalLabelNode = firstTextDescendant(summarySubtotalNode);
+            const subtotalValueNode = lastTextDescendant(summarySubtotalNode);
+            const discountLabelNode = firstTextDescendant(summaryDiscountNode);
+            const discountValueNode = lastTextDescendant(summaryDiscountNode);
+            const totalLabelNode = firstTextDescendant(summaryTotalNode);
+            const totalValueNode = lastTextDescendant(summaryTotalNode);
+            const summaryTitleNode = firstTextDescendant(summaryNode) || summaryNode;
             return `
 .usi_summary {
 	width: ${summaryNode ? (0, css_1.toPercent)(summaryNode.bounds.width, root.bounds.width) : "76%"};
@@ -3858,13 +4140,14 @@ ${productCardCss}
 	display: flex;
 	flex-direction: column;
 	gap: 0.5em;
+	${flattenedAbsolutePositionDeclarations(summaryNode, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
 .usi_summary_title {
 	margin: 0 0 0.5em;
 	white-space: pre-wrap;
-	${flattenedTextDeclarations(summaryNode, frameScale, {
+	${flattenedTextDeclarations(summaryTitleNode, frameScale, {
                 "font-size": "1em",
                 "font-weight": 700,
                 "white-space": "pre-wrap"
@@ -3883,12 +4166,45 @@ ${productCardCss}
 	${flattenedTextDeclarations(summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
+.usi_price .usi_label,
+.usi_price .usi_value,
+.usi_discount .usi_label,
+.usi_discount .usi_value,
+.usi_new_price .usi_label,
+.usi_new_price .usi_value {
+	font-size: 1em;
+}
+
+.usi_price .usi_label {
+	${flattenedTextDeclarations(subtotalLabelNode || summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_price .usi_value {
+	${flattenedTextDeclarations(subtotalValueNode || summarySubtotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
 .usi_discount {
 	${flattenedTextDeclarations(summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
+.usi_discount .usi_label {
+	${flattenedTextDeclarations(discountLabelNode || summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_discount .usi_value {
+	${flattenedTextDeclarations(discountValueNode || summaryDiscountNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
 .usi_new_price {
 	${flattenedTextDeclarations(summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_new_price .usi_label {
+	${flattenedTextDeclarations(totalLabelNode || summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
+}
+
+.usi_new_price .usi_value {
+	${flattenedTextDeclarations(totalValueNode || summaryTotalNode || summaryNode, frameScale, { "font-size": "1em" }) || "font-size: 1em;"}
 }
 
 .usi_label,
@@ -3918,6 +4234,7 @@ ${productCardCss}
             if (!nodes.length)
                 return "";
             const node = nodes[0];
+            const textNode = firstTextDescendant(node) || node;
             return `
 .usi_secondary_cta {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
@@ -3926,7 +4243,8 @@ ${productCardCss}
 	justify-content: center;
 	padding: 0.75em 1em;
 	cursor: pointer;
-	${flattenedBoxDeclarations(node, frameScale)}
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
+	${flattenedBoxDeclarations(node, frameScale, { color: textNode && textNode.style.color ? textNode.style.color : undefined })}
 }
 `;
         },
@@ -3943,20 +4261,32 @@ ${productCardCss}
             if (!nodes.length)
                 return "";
             const node = nodes[0];
+            const allTextNodes = textDescendants(node);
+            const baseTextNode = allTextNodes[0] || node;
+            const linkNode = allTextNodes.find(function (child) {
+                return /privacy|policy/i.test(componentText(child));
+            }) || allTextNodes[allTextNodes.length - 1] || node;
             return `
 .usi_disclaimer {
 	width: ${(0, css_1.toPercent)(node.bounds.width, root.bounds.width)};
-	width: 100%;
 	margin: 0;
 	font-size: 0.875em;
 	line-height: 1.4;
 	text-align: center;
-	margin: auto;
-	${flattenedTextDeclarations(node, frameScale)}
+	${flattenedAbsolutePositionDeclarations(node, root, {
+                force: true,
+                includeWidth: true,
+                pinBottom: node.bounds.y > root.bounds.height * 0.55
+            })}
+	${flattenedTextDeclarations(baseTextNode || node, frameScale)}
 }
 .usi_disclaimer a {
-	font-weight: bold;
-	text-decoration: underline;
+	${flattenedTextDeclarations(linkNode || node, frameScale, {
+                color: linkNode && linkNode.style.color ? linkNode.style.color : undefined,
+                "font-size": linkNode && linkNode.style.fontSize ? (0, css_1.pxToEm)(linkNode.style.fontSize, 16, frameScale) : undefined,
+                "font-weight": linkNode && linkNode.style.fontWeight ? linkNode.style.fontWeight : 700,
+                "text-decoration": "underline"
+            })}
 }
 `;
         },
@@ -3971,14 +4301,14 @@ ${productCardCss}
         renderCss: (nodes, _root, frameScale, context) => {
             if (!nodes.length)
                 return "";
-            const mainBounds = context ? context.mainBounds : undefined;
             const node = nodes[0];
-            if (!mainBounds)
-                return "";
             return `
 .usi_headline {
-	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+	${flattenedAbsolutePositionDeclarations(node, context ? context.rootBounds : undefined, {
+                force: true,
+                includeWidth: true
+            })}
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap", "max-width": "none" })}
 }
 `;
         },
@@ -3993,14 +4323,14 @@ ${productCardCss}
         renderCss: (nodes, _root, frameScale, context) => {
             if (!nodes.length)
                 return "";
-            const mainBounds = context ? context.mainBounds : undefined;
             const node = nodes[0];
-            if (!mainBounds)
-                return "";
             return `
 .usi_eyebrow {
-	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+	${flattenedAbsolutePositionDeclarations(node, context ? context.rootBounds : undefined, {
+                force: true,
+                includeWidth: true
+            })}
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap", "max-width": "none" })}
 }
 `;
         },
@@ -4015,14 +4345,14 @@ ${productCardCss}
         renderCss: (nodes, _root, frameScale, context) => {
             if (!nodes.length)
                 return "";
-            const mainBounds = context ? context.mainBounds : undefined;
             const node = nodes[0];
-            if (!mainBounds)
-                return "";
             return `
 .usi_subtext {
-	width: ${(0, css_1.toPercent)(node.bounds.width, mainBounds.width)};
-	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })}
+	${flattenedAbsolutePositionDeclarations(node, context ? context.rootBounds : undefined, {
+                force: true,
+                includeWidth: true
+            })}
+	${flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap", "max-width": "none" })}
 }
 `;
         },
@@ -4050,6 +4380,7 @@ ${productCardCss}
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
+	${flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true, includeHeight: true })}
 	${flattenedBoxDeclarations(node, frameScale, {
                 display: "flex",
                 "align-items": "center",
@@ -4083,7 +4414,7 @@ ${productCardCss}
 	display: block;
 	overflow: hidden;
 	text-indent: -9999px;
-	${flattenedBoxDeclarations(node, frameScale, { background: "none", border: "none" }) || "background:none;border:none;"}
+	${flattenedBoxDeclarations(closeNode, frameScale, { background: closeNode && closeNode.style.background ? closeNode.style.background : "none" }) || "background:none;"}
 }
 
 #usi_close::before {
@@ -4097,9 +4428,13 @@ ${productCardCss}
 	${flattenedTextDeclarations(node, frameScale, {
                 background: "transparent",
                 border: "none",
+                color: node && (node.style.color || node.style.borderColor) ? node.style.color || node.style.borderColor : undefined,
                 "text-align": "center",
                 "line-height": "1"
             }) || "background:transparent;border:none;text-align:center;line-height:1;"}
+	${node && node.style.borderColor
+                ? `-webkit-text-stroke:${String(node.style.borderWidth || 1)}px ${node.style.borderColor}; text-shadow:-1px 0 ${node.style.borderColor}, 0 1px ${node.style.borderColor}, 1px 0 ${node.style.borderColor}, 0 -1px ${node.style.borderColor};`
+                : ""}
 }
 
 button#usi_close,
@@ -4199,7 +4534,7 @@ button#usi_close:focus {
         shouldRender: () => true
     }
 };
-function generateProductGridHtml(products) {
+function generateProductGridHtml(products, isRuntime, deliverablesPath) {
     if (!products.length)
         return "";
     return products
@@ -4208,6 +4543,9 @@ function generateProductGridHtml(products) {
         const fallbackSubtitle = (0, string_1.escapeHtml)(product.subtitle || "");
         const fallbackPrice = (0, string_1.escapeHtml)(product.price || "");
         const fallbackButton = (0, string_1.escapeHtml)(product.cta || "");
+        const fallbackImageSrc = product.imageAsset && deliverablesPath
+            ? (0, string_1.escapeHtml)(deliverablesPath.replace(/\/$/, "") + "/" + product.imageAsset)
+            : PRODUCT_PLACEHOLDER_IMAGE;
         const hasMeaningfulContent = !!fallbackSubtitle || !!fallbackPrice || !!fallbackButton;
         if (!hasMeaningfulContent)
             return "";
@@ -4215,12 +4553,18 @@ function generateProductGridHtml(products) {
 				<article class="usi_product_card usi_product usi_product${index + 1}">
 					<div class="usi_product_image">
 						<img
-							src="\${usi_cookies.get('usi_prod_image_${index + 1}') || '${PRODUCT_PLACEHOLDER_IMAGE}'}"
-							alt="\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}"
+							src="${isRuntime
+            ? `\${usi_cookies.get('usi_prod_image_${index + 1}') || '${fallbackImageSrc}'}`
+            : fallbackImageSrc}"
+							alt="${isRuntime
+            ? `\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle || "Product"}')}`
+            : fallbackTitle || "Product"}"
 						/>
 					</div>
 					<div class="usi_product_body">
-						<h3 class="usi_product_title">\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle}')}</h3>
+						<h3 class="usi_product_title">${isRuntime
+            ? `\${usi_js.escape_quotes(usi_cookies.get('usi_prod_name_${index + 1}') || '${fallbackTitle}')}`
+            : fallbackTitle}</h3>
 						${fallbackSubtitle ? `<p class="usi_product_subtitle">${fallbackSubtitle}</p>` : ""}
 						${fallbackPrice ? `<p class="usi_product_price">${fallbackPrice}</p>` : ""}
 						${fallbackButton ? `<button class="usi_product_cta" type="button">${fallbackButton}</button>` : ""}
@@ -4289,23 +4633,33 @@ function renderComponentByKey(rendererKey, node, definition, hideVisibleText, co
         return "";
     return renderer.renderHtml(node, definition, hideVisibleText, context);
 }
-function renderExplicitComponentNode(node, hideVisibleText) {
+function renderExplicitComponentNode(node, hideVisibleText, root, frameScale = 1, deliverablesPath = "") {
     const definition = componentDefinitionForNode(node);
     if (!definition)
         return "";
     const idRenderer = COMPONENT_RENDERERS[definition.id];
     if (idRenderer) {
-        return idRenderer.renderHtml(node, definition, hideVisibleText);
+        return idRenderer.renderHtml(node, definition, hideVisibleText, { deliverablesPath });
     }
     const kind = definition.render.kind;
     const renderer = COMPONENT_RENDERERS[kind];
     if (renderer) {
-        return renderer.renderHtml(node, definition, hideVisibleText);
+        return renderer.renderHtml(node, definition, hideVisibleText, { deliverablesPath });
     }
     const tag = definition.render.htmlTag;
-    const className = definition.render.className;
+    const className = hideVisibleText && definition.render.kind === "text"
+        ? definition.render.className + " usi_sr_only"
+        : definition.render.className;
     const text = componentText(node, definition);
-    return `<${tag} class="${className}">${(0, string_1.escapeHtml)(text)}</${tag}>`;
+    const inlineStyle = definition.render.kind === "text" && root
+        ? [
+            flattenedAbsolutePositionDeclarations(node, root, { force: true, includeWidth: true }),
+            flattenedTextDeclarations(node, frameScale, { "white-space": "pre-wrap" })
+        ]
+            .filter(Boolean)
+            .join("")
+        : "";
+    return `<${tag} class="${className}"${inlineStyle ? ` style="${inlineStyle}"` : ""}>${(0, string_1.escapeHtml)(text)}</${tag}>`;
 }
 function hasInsertedComponent(root, componentId) {
     return (0, tree_1.flattenTree)(root).some(function (node) {
@@ -4355,6 +4709,50 @@ function componentText(node, definition) {
         return text;
     return definition && definition.render.fallbackText ? definition.render.fallbackText : "";
 }
+function textDescendants(node) {
+    if (!node)
+        return [];
+    return (0, tree_1.flattenTree)(node).filter(function (child) {
+        const text = String(child.text || "").trim();
+        return !!text && (child.type === "TEXT" || child.children.length === 0);
+    });
+}
+function firstTextDescendant(node) {
+    return textDescendants(node)[0];
+}
+function lastTextDescendant(node) {
+    const descendants = textDescendants(node);
+    return descendants.length ? descendants[descendants.length - 1] : undefined;
+}
+function firstChildWithBackground(node) {
+    if (!node)
+        return undefined;
+    return (0, tree_1.flattenTree)(node).find(function (child) {
+        return !!child.style.background || !!child.style.borderColor || !!child.style.borderRadius;
+    });
+}
+function googleFontHeadTags(fontFamilies) {
+    const googleFontSet = new Set(google_fonts_cache_1.GOOGLE_FONT_FAMILIES.map(function (font) {
+        return font.toLowerCase();
+    }));
+    const families = Array.from(new Set(fontFamilies.filter(function (font) {
+        return googleFontSet.has(font.toLowerCase());
+    })));
+    if (!families.length)
+        return "";
+    const href = "https://fonts.googleapis.com/css2?" +
+        families
+            .map(function (font) {
+            return "family=" + encodeURIComponent(font).replace(/%20/g, "+");
+        })
+            .join("&") +
+        "&display=swap";
+    return [
+        '<link rel="preconnect" href="https://fonts.googleapis.com">',
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+        `<link href="${href}" rel="stylesheet">`
+    ].join("\n\t\t");
+}
 function combineBounds(nodes) {
     const filtered = nodes.filter(Boolean);
     if (!filtered.length)
@@ -4393,6 +4791,10 @@ function flattenedTextDeclarations(node, frameScale, extra) {
         return "";
     return (0, css_1.cssDeclarations)(Object.assign({
         color: node.style.color,
+        "-webkit-text-stroke": node.style.borderColor
+            ? String(node.style.borderWidth || 1) + "px " + node.style.borderColor
+            : undefined,
+        "text-shadow": node.style.boxShadow,
         opacity: node.style.opacity !== 1 ? node.style.opacity : "",
         "font-family": node.style.fontFamily
             ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
@@ -4418,6 +4820,9 @@ function flattenedBoxDeclarations(node, frameScale, extra) {
             ? String(node.style.borderWidth || 1) + "px solid " + node.style.borderColor
             : undefined,
         "border-radius": node.style.borderRadius ? String(node.style.borderRadius) + "px" : undefined,
+        "overflow-x": node.style.overflowX,
+        "overflow-y": node.style.overflowY,
+        "box-shadow": node.style.boxShadow,
         opacity: node.style.opacity !== 1 ? node.style.opacity : "",
         "font-family": node.style.fontFamily
             ? '"' + node.style.fontFamily + '", Helvetica, Arial, sans-serif'
@@ -4432,6 +4837,25 @@ function flattenedBoxDeclarations(node, frameScale, extra) {
         "text-align": node.style.textAlign,
         "text-transform": (0, css_1.textTransformFromCase)(node.style.textCase)
     }, extra || {}));
+}
+function flattenedAbsolutePositionDeclarations(node, root, options) {
+    if (!node || !root)
+        return "";
+    const rootBounds = "bounds" in root ? root.bounds : root;
+    if (!rootBounds || !rootBounds.width || !rootBounds.height)
+        return "";
+    const isAbsolute = options && options.force ? true : node.layout.positioning === "ABSOLUTE";
+    if (!isAbsolute)
+        return "";
+    const bottom = rootBounds.y + rootBounds.height - (node.bounds.y + node.bounds.height);
+    return (0, css_1.cssDeclarations)({
+        position: "absolute",
+        left: (0, css_1.toPercent)(node.bounds.x - rootBounds.x, rootBounds.width),
+        top: options && options.pinBottom ? undefined : (0, css_1.toPercent)(node.bounds.y - rootBounds.y, rootBounds.height),
+        bottom: options && options.pinBottom ? (0, css_1.toPercent)(bottom, rootBounds.height) : undefined,
+        width: options && options.includeWidth ? (0, css_1.toPercent)(node.bounds.width, rootBounds.width) : undefined,
+        height: options && options.includeHeight ? (0, css_1.toPercent)(node.bounds.height, rootBounds.height) : undefined
+    });
 }
 function findDescendantRoleNode(root, role) {
     if (!root)
@@ -4623,19 +5047,17 @@ function inlineLayoutStyles(node, frameScale) {
     };
     return (0, css_1.cssDeclarations)(styles);
 }
-// function inlinePositionStyles(
-// 	node: NormalizedNode,
-// 	root: NormalizedNode,
-// 	options?: { includeHeight?: boolean }
-// ): string {
-// 	return cssDeclarations({
-// 		position: "absolute",
-// 		left: toPercent(node.bounds.x - root.bounds.x, root.bounds.width),
-// 		top: toPercent(node.bounds.y - root.bounds.y, root.bounds.height),
-// 		width: "100%",//toPercent(node.bounds.width, root.bounds.width),
-// 		height: options && options.includeHeight ? toPercent(node.bounds.height, root.bounds.height) : undefined
-// 	});
-// }
+function inlinePositionStyles(node, root, forceAbsolute) {
+    if (!forceAbsolute && node.layout.positioning !== "ABSOLUTE")
+        return "";
+    return (0, css_1.cssDeclarations)({
+        position: "absolute",
+        left: (0, css_1.toPercent)(node.bounds.x - root.bounds.x, root.bounds.width),
+        top: (0, css_1.toPercent)(node.bounds.y - root.bounds.y, root.bounds.height),
+        width: (0, css_1.toPercent)(node.bounds.width, root.bounds.width),
+        height: (0, css_1.toPercent)(node.bounds.height, root.bounds.height)
+    });
+}
 function collectRecursiveCss(node, root, frameScale, excludedIds) {
     if (shouldSkipRecursiveNode(node, excludedIds))
         return "";
@@ -4704,7 +5126,7 @@ function renderRecursiveNode(node, context) {
             const tag = definition.render.htmlTag || "div";
             const className = definition.render.className;
             const inlineStyle = [
-                //inlinePositionStyles(node, context.root),
+                inlinePositionStyles(node, context.root, context.hideVisibleText),
                 inlineLayoutStyles(node, context.frameScale),
                 flattenedBoxDeclarations(node, context.frameScale)
             ]
@@ -4712,13 +5134,13 @@ function renderRecursiveNode(node, context) {
                 .join("");
             return `<${tag} class="${className}"${inlineStyle ? ` style="${inlineStyle}"` : ""}>${childrenHtml}</${tag}>`;
         }
-        return renderExplicitComponentNode(node, context.hideVisibleText);
+        return renderExplicitComponentNode(node, context.hideVisibleText, context.root, context.frameScale, context.deliverablesPath || "");
     }
     if (isContainerLikeNode(node)) {
         const tag = containerTagForNode(node);
         const className = recursiveClassName(node);
         const inlineStyle = [
-            //inlinePositionStyles(node, context.root),
+            inlinePositionStyles(node, context.root, context.hideVisibleText),
             inlineLayoutStyles(node, context.frameScale),
             flattenedBoxDeclarations(node, context.frameScale)
         ]
@@ -5028,6 +5450,135 @@ usi_js.click_cta = function(){
 	}
 };`;
 }
+// function buildRecommendationJs(): string {
+// 	return `usi_js.click_cta = function(product){
+// 	try {
+// 		usi_js.deep_link_new_window(product.url);
+// 	} catch(err) {
+// 		usi_commons.report_error(err);
+// 	}
+// };
+// usi_js.display_vars.product_html = \`<div class="usi_products">\`;
+// for (var i = 0; i < 3; i++) {
+// 	var item = usi_app.product_rec.data[i];
+// 	if (item == undefined) {
+// 		break;
+// 	}
+// 	usi_js.display_vars.product_html += \`
+// 		<div class="usi_product usi_product\${i}">
+// 			<button type="button" onclick="usi_js.click_cta(usi_app.product_rec.data[\${i}]);" class="usi_prod_image_link">
+// 				<img src="\${item.image}" border="0" alt="\${usi_js.escape_quotes(item.name)}" class="usi_prod_image" />
+// 			</button>
+// 			<div class="usi_product_info">
+// 				<div class="usi_name">\${item.name}</div>
+// 				<div class="usi_price">$\${item.price}</div>
+// 				<button type="button" onclick="usi_js.click_cta(usi_app.product_rec.data[\${i}]);" class="usi_link">VIEW ITEM</button>
+// 			</div>
+// 		</div>
+// 	\`;
+// }
+// usi_js.display_vars.product_html += \`</div>\`;
+// usi_js.display_vars.p1_html = \`
+// 	<div class="usi_head usi_sr_only">HEADLINE</div>
+// 	\${usi_js.display_vars.product_html}
+// \`;`;
+// }
+// function buildAvailabilitySummary(){
+// 	return `try {
+// 	usi_js.product = {};
+// 	usi_js.product = usi_app.product;
+// 	usi_js.product.usi_pid_required = usi_app.product.pid + "_" + usi_js.campaign.company_id;
+// } catch (err) {
+// 	usi_commons.report_error(err);
+// 	usi_js.launch.enabled = false;
+// 	usi_js.launch.suppress = true;
+// }`;
+// }
+// function buildMobilePhone(){
+// 	return `usi_js.click_cta = function(){
+// 	try {
+// 		setTimeout(function(){
+// 			usi_js.send_data("usi_short_code", usi_js.short_code);
+// 			usi_js.deep_link();
+// 		}, 1000);
+// 	} catch(err) {
+// 		usi_commons.report_error(err);
+// 	}
+// };
+// usi_js.get_random_string = function(){
+// 	var chars = "abcdefghjkmnpqrstuvwxyz23456789";
+// 	var string_length = 7;
+// 	var randomstring = '';
+// 	for (var i=0; i<string_length; i++) {
+// 		var rnum = Math.floor(Math.random() * chars.length);
+// 		randomstring += chars.substring(rnum,rnum+1);
+// 	}
+// 	return randomstring;
+// };
+// usi_js.short_code = usi_js.get_random_string();
+// usi_js.display_vars.p1_html = \`
+// 	<div class="usi_head usi_sr_only">HEADLINE</div>
+// 	<a class="usi_submitbutton" onclick="usi_js.click_cta();" href="sms://+18448979384;?&body=encodeURIComponent("Send this text to get your 10% off coupon code and subscribe to other messages from COMPANY_NAME! (ref: "+usi_js.short_code+")"),"alt="Click Here"></a>
+// \`;`;
+// }
+// function buildOther(){
+// 	return `usi_js.translations = {
+// 	email_alert: "Please enter a valid email address",
+// 	email_good: "Valid Email",
+// 	email_bad: "Invalid Email",
+// 	close_modal: "Close"
+// };
+// usi_js.products_seen = [];
+// usi_js.click_cta = function(){
+// 	try {
+// 		// load affiliate link from app file on next page load
+// 		usi_cookies.set("usi_needs_link", 1);
+// 		usi_js.save_link();
+// 		usi_app.link_injection(usi_js.campaign.link, function() {
+// 			usi_js.link_clicked();
+// 		});
+// 		if (typeof(usi_app.clicked) !== "undefined") {
+// 			usi_app.clicked({
+// 				id: usi_js.campaign.id, 
+// 				site_id: usi_js.campaign.site_id, 
+// 				config_id: usi_js.campaign.config_id, 
+// 				clicked_product: product || {}, 
+// 				target_product: usi_app.product_rec.pids[0], 
+// 				callback: function(){
+// 				}
+// 			});
+// 		}
+// 	} catch(err) {
+// 		usi_commons.report_error(err);
+// 	}
+// };
+// usi_js.save_link = function () {
+// 	try {
+// 		usi_cookies.set('usi_delay_click_id', usi_js.campaign.id, usi_js.campaign.sale_window , true);
+// 		if (usi_js.campaign.click_cookie != 0) {
+// 			usi_cookies.set('usi_launched' + usi_js.campaign.cookie_append, usi_js.campaign.id, usi_js.campaign.click_cookie, true);
+// 		}
+// 		usi_cookies.set("usi_tracking_link", usi_js.get_deep_link());
+// 	} catch(err) {
+// 		if (typeof usi_commons !== "undefined") usi_commons.report_error(err);
+// 	}
+// };
+// usi_js.post_display = function(){
+// 	if (typeof(usi_app.seen) !== "undefined") {
+// 		usi_app.seen({
+// 			id: usi_js.campaign.id,
+// 			site_id: usi_js.campaign.site_id,
+// 			config_id: usi_js.campaign.config_id,
+// 			seen_products: usi_js.products_seen || [],
+// 			target_product: usi_app.product_rec.pids[0]
+// 		});
+// 	}
+// };
+// usi_js.display_vars.p1_html = \`
+// 	<div class="usi_head usi_sr_only">HEADLINE</div>
+// 	<button class="usi_submitbutton" onclick="usi_js.click_cta();" type="button" aria-label="Redeem Now"></button>
+// \`;`;
+// }
 function buildFeatureJs(features) {
     const parts = [];
     if (features.hasSingleProduct && !features.hasSummary) {
@@ -5056,10 +5607,16 @@ function buildFeatureJs(features) {
     }
     return parts.join("\n\n");
 }
-function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
+function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText, deliverablesPath = "") {
     const frameScale = 1;
     const scaledRootWidth = (0, css_1.scalePx)(root.bounds.width, frameScale) || root.bounds.width;
     const scaledRootHeight = (0, css_1.scalePx)(root.bounds.height, frameScale) || root.bounds.height;
+    const fontFamilies = Array.from(new Set((0, tree_1.flattenTree)(root)
+        .map(function (node) {
+        return String(node.style.fontFamily || "").trim();
+    })
+        .filter(Boolean)));
+    const externalFontTags = googleFontHeadTags(fontFamilies);
     const headlineNode = (0, tree_1.findNormalizedNodeById)(root, analysis.headlineNodeId);
     const subtextNode = (0, tree_1.findNormalizedNodeById)(root, analysis.subtextNodeId);
     const eyebrowNode = (0, tree_1.findNormalizedNodeById)(root, analysis.eyebrowNodeId);
@@ -5155,7 +5712,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         standaloneProductSubtitleNode ||
         standaloneProductPriceNode ||
         standaloneProductButtonNode);
-    //const hasProductGrid = !!productContainerNode || productCardNodes.length > 0;
     const hasProductGrid = !!productContainerNode ||
         productCardNodes.length > 1 ||
         (productCardNodes.length === 1 && productCardNodes[0].children.length > 1);
@@ -5196,9 +5752,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         : standaloneProductImageNode
             ? [standaloneProductImageNode]
             : [];
-    // const summarySubtotalNodes = summaryNode ? findNodesByRole(summaryNode, "summary-subtotal", 0.35) : [];
-    // const summaryDiscountNodes = summaryNode ? findNodesByRole(summaryNode, "summary-discount", 0.35) : [];
-    // const summaryTotalNodes = summaryNode ? findNodesByRole(summaryNode, "summary-total", 0.35) : [];
     const standaloneProductData = hasStandaloneProduct
         ? [
             {
@@ -5218,7 +5771,9 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
             (productCardNodes.length - 1)
         : 0;
     const gridColumns = Math.max(1, Math.min(productCardNodes.length || runtimeProducts.length || 1, 3));
-    const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts);
+    const previewProductHtml = generateProductGridHtml(runtimeProducts, false, deliverablesPath);
+    const runtimeProductHtmlRaw = generateProductGridHtml(runtimeProducts, true, deliverablesPath);
+    const previewSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, false);
     const runtimeSummaryHtml = generateSummaryHtml(hasSummary, summaryTitle, true);
     const realMediaPanelNodes = mediaPanelNodes.filter(function (node) {
         return !productImageNodes.some(function (pImg) {
@@ -5240,14 +5795,6 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
         ...dividerNodes
     ];
     const extraRenderableNodes = allExtraComponentNodes;
-    // const extraRenderableNodes = allExtraComponentNodes.filter(function (node) {
-    // 	const definition = componentDefinitionForNode(node);
-    // 	if (definition && definition.render && definition.render.kind === "media") {
-    // 		const tag = definition.render.htmlTag;
-    // 		if (tag !== "hr") return false;
-    // 	}
-    // 	return true;
-    // });
     function isDefined(value) {
         return value != null;
     }
@@ -5308,10 +5855,11 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
             frameScale,
             hideVisibleText,
             excludedIds: recursiveExcludedIds,
+            deliverablesPath,
             productGridAnchorId: hasProducts && productAnchorNode ? productAnchorNode.id : undefined,
             summaryAnchorId: hasSummary && summaryAnchorNode ? summaryAnchorNode.id : undefined,
-            productHtml: runtimeProductHtmlRaw,
-            summaryHtml: runtimeSummaryHtml,
+            productHtml: previewProductHtml,
+            summaryHtml: previewSummaryHtml,
             explicitOverrideHtmlById
         });
     })
@@ -5320,6 +5868,28 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     const contentHTML = `
 		${closeNode ? renderComponentByKey("close_control", closeNode, constants_1.COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
 		${recursiveContentHtml}
+		${hasProducts && !productAnchorNode ? renderComponentByKey("product_grid", undefined, constants_1.COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: previewProductHtml }) : ""}
+		${hasSummary && !summaryAnchorNode ? renderComponentByKey("price_table", undefined, constants_1.COMPONENT_BY_ID.price_table, hideVisibleText, { summaryHtml: previewSummaryHtml }) : ""}
+	`.trim();
+    const runtimeContentHTML = `
+		${closeNode ? renderComponentByKey("close_control", closeNode, constants_1.COMPONENT_BY_ID.close_control, hideVisibleText) : ""}
+		${root.children
+        .map(function (child) {
+        return renderRecursiveNode(child, {
+            root,
+            frameScale,
+            hideVisibleText,
+            excludedIds: recursiveExcludedIds,
+            deliverablesPath,
+            productGridAnchorId: hasProducts && productAnchorNode ? productAnchorNode.id : undefined,
+            summaryAnchorId: hasSummary && summaryAnchorNode ? summaryAnchorNode.id : undefined,
+            productHtml: runtimeProductHtmlRaw,
+            summaryHtml: runtimeSummaryHtml,
+            explicitOverrideHtmlById
+        });
+    })
+        .filter(Boolean)
+        .join("")}
 		${hasProducts && !productAnchorNode ? renderComponentByKey("product_grid", undefined, constants_1.COMPONENT_BY_ID.product_grid, hideVisibleText, { productHtml: runtimeProductHtmlRaw }) : ""}
 		${hasSummary && !summaryAnchorNode ? renderComponentByKey("price_table", undefined, constants_1.COMPONENT_BY_ID.price_table, hideVisibleText, { summaryHtml: runtimeSummaryHtml }) : ""}
 	`.trim();
@@ -5332,13 +5902,13 @@ function renderFlattenedHtml(root, analysis, imageFileName, hideVisibleText) {
     });
     const textRegionCss = [
         headlineText && headlineNode && mainBounds
-            ? COMPONENT_RENDERERS.headline.renderCss([headlineNode], root, frameScale, { mainBounds })
+            ? COMPONENT_RENDERERS.headline.renderCss([headlineNode], root, frameScale, { mainBounds, rootBounds: root.bounds })
             : "",
         eyebrowText && eyebrowNode && mainBounds
-            ? COMPONENT_RENDERERS.eyebrow.renderCss([eyebrowNode], root, frameScale, { mainBounds })
+            ? COMPONENT_RENDERERS.eyebrow.renderCss([eyebrowNode], root, frameScale, { mainBounds, rootBounds: root.bounds })
             : "",
         subtextText && subtextNode && mainBounds
-            ? COMPONENT_RENDERERS.subtext.renderCss([subtextNode], root, frameScale, { mainBounds })
+            ? COMPONENT_RENDERERS.subtext.renderCss([subtextNode], root, frameScale, { mainBounds, rootBounds: root.bounds })
             : ""
     ].join("");
     const rendererNodeMap = {
@@ -5442,7 +6012,7 @@ ${recursiveCss}
     const js = `${runtimeJs}
 
 usi_js.display_vars.p1_html = \`
-${(0, string_1.escapeTemplateString)(formatFlattenedHtml(contentHTML))}
+${(0, string_1.escapeTemplateString)(formatFlattenedHtml(runtimeContentHTML))}
 \`;
 `;
     const html = `
@@ -5451,6 +6021,7 @@ ${(0, string_1.escapeTemplateString)(formatFlattenedHtml(contentHTML))}
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		${externalFontTags}
 		<title>Preview</title>
 		<style>
 		.usi_display {left:50%;margin-left:-320px;top:0px;width:640px;height:636px;}
@@ -5475,7 +6046,8 @@ ${(0, string_1.escapeTemplateString)(formatFlattenedHtml(contentHTML))}
         css: css,
         imageFileName: imageFileName,
         js: js,
-        contentHTML: contentHTML
+        contentHTML: contentHTML,
+        runtimeContentHTML: runtimeContentHTML
     };
 }
 function detectEnabledFeaturesFromAnalysis(analysis) {
@@ -5519,10 +6091,11 @@ ${buildRuntimeJsForAnalysis(page.analysis)}
 `;
     })
         .join("\n");
+    /*usi_js.display_vars.${page.key}_css = \` ${escapeTemplateString(page.variant.css)} \`;*/
     const assignments = pages
         .map(function (page) {
         return `usi_js.display_vars.${page.key}_html = \`
-${(0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.contentHTML))}
+${(0, string_1.escapeTemplateString)(formatFlattenedHtml(page.variant.runtimeContentHTML))}
 \`;
 `;
     })
@@ -5583,6 +6156,1595 @@ function textTransformFromCase(textCase) {
         return 'capitalize';
     return undefined;
 }
+},
+"render/google-fonts-cache": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GOOGLE_FONT_CACHE_SOURCE = exports.GOOGLE_FONT_FAMILIES = void 0;
+exports.GOOGLE_FONT_FAMILIES = [
+    "ABeeZee",
+    "Abel",
+    "Abhaya Libre",
+    "Aboreto",
+    "Abril Fatface",
+    "Abyssinica SIL",
+    "Aclonica",
+    "Acme",
+    "Actor",
+    "Adamina",
+    "ADLaM Display",
+    "Advent Pro",
+    "Agdasima",
+    "Aguafina Script",
+    "Akatab",
+    "Akaya Kanadaka",
+    "Akaya Telivigala",
+    "Akronim",
+    "Akshar",
+    "Aladin",
+    "Alata",
+    "Alatsi",
+    "Albert Sans",
+    "Aldrich",
+    "Alef",
+    "Alegreya",
+    "Alegreya Sans",
+    "Alegreya Sans SC",
+    "Alegreya SC",
+    "Aleo",
+    "Alex Brush",
+    "Alexandria",
+    "Alfa Slab One",
+    "Alice",
+    "Alike",
+    "Alike Angular",
+    "Alkalami",
+    "Alkatra",
+    "Allan",
+    "Allerta",
+    "Allerta Stencil",
+    "Allison",
+    "Allura",
+    "Almarai",
+    "Almendra",
+    "Almendra Display",
+    "Almendra SC",
+    "Alumni Sans",
+    "Alumni Sans Collegiate One",
+    "Alumni Sans Inline One",
+    "Alumni Sans Pinstripe",
+    "Amarante",
+    "Amaranth",
+    "Amatic SC",
+    "Amethysta",
+    "Amiko",
+    "Amiri",
+    "Amiri Quran",
+    "Amita",
+    "Anaheim",
+    "Andada Pro",
+    "Andika",
+    "Anek Bangla",
+    "Anek Devanagari",
+    "Anek Gujarati",
+    "Anek Gurmukhi",
+    "Anek Kannada",
+    "Anek Latin",
+    "Anek Malayalam",
+    "Anek Odia",
+    "Anek Tamil",
+    "Anek Telugu",
+    "Angkor",
+    "Annie Use Your Telescope",
+    "Anonymous Pro",
+    "Antic",
+    "Antic Didone",
+    "Antic Slab",
+    "Anton",
+    "Antonio",
+    "Anuphan",
+    "Anybody",
+    "Aoboshi One",
+    "AR One Sans",
+    "Arapey",
+    "Arbutus",
+    "Arbutus Slab",
+    "Architects Daughter",
+    "Archivo",
+    "Archivo Black",
+    "Archivo Narrow",
+    "Are You Serious",
+    "Aref Ruqaa",
+    "Aref Ruqaa Ink",
+    "Arima",
+    "Arima Madurai",
+    "Arimo",
+    "Arizonia",
+    "Armata",
+    "Arsenal",
+    "Artifika",
+    "Arvo",
+    "Arya",
+    "Asap",
+    "Asap Condensed",
+    "Asar",
+    "Asset",
+    "Assistant",
+    "Astloch",
+    "Asul",
+    "Athiti",
+    "Atkinson Hyperlegible",
+    "Atma",
+    "Atomic Age",
+    "Aubrey",
+    "Audiowide",
+    "Autour One",
+    "Average",
+    "Average Sans",
+    "Averia Gruesa Libre",
+    "Averia Libre",
+    "Averia Sans Libre",
+    "Averia Serif Libre",
+    "Azeret Mono",
+    "B612",
+    "B612 Mono",
+    "Babylonica",
+    "Bacasime Antique",
+    "Bad Script",
+    "Bagel Fat One",
+    "Bahiana",
+    "Bahianita",
+    "Bai Jamjuree",
+    "Bakbak One",
+    "Ballet",
+    "Baloo 2",
+    "Baloo Bhai 2",
+    "Baloo Bhaijaan 2",
+    "Baloo Bhaina 2",
+    "Baloo Chettan 2",
+    "Baloo Da 2",
+    "Baloo Paaji 2",
+    "Baloo Tamma 2",
+    "Baloo Tammudu 2",
+    "Baloo Thambi 2",
+    "Balsamiq Sans",
+    "Balthazar",
+    "Bangers",
+    "Barlow",
+    "Barlow Condensed",
+    "Barlow Semi Condensed",
+    "Barriecito",
+    "Barrio",
+    "Basic",
+    "Baskervville",
+    "Battambang",
+    "Baumans",
+    "Bayon",
+    "Be Vietnam Pro",
+    "Beau Rivage",
+    "Bebas Neue",
+    "Belanosima",
+    "Belgrano",
+    "Bellefair",
+    "Belleza",
+    "Bellota",
+    "Bellota Text",
+    "BenchNine",
+    "Benne",
+    "Bentham",
+    "Berkshire Swash",
+    "Besley",
+    "Beth Ellen",
+    "Bevan",
+    "BhuTuka Expanded One",
+    "Big Shoulders Display",
+    "Big Shoulders Inline Display",
+    "Big Shoulders Inline Text",
+    "Big Shoulders Stencil Display",
+    "Big Shoulders Stencil Text",
+    "Big Shoulders Text",
+    "Bigelow Rules",
+    "Bigshot One",
+    "Bilbo",
+    "Bilbo Swash Caps",
+    "BioRhyme",
+    "BioRhyme Expanded",
+    "Birthstone",
+    "Birthstone Bounce",
+    "Biryani",
+    "Bitter",
+    "BIZ UDGothic",
+    "BIZ UDMincho",
+    "BIZ UDPGothic",
+    "BIZ UDPMincho",
+    "Black And White Picture",
+    "Black Han Sans",
+    "Black Ops One",
+    "Blaka",
+    "Blaka Hollow",
+    "Blaka Ink",
+    "Blinker",
+    "Bodoni Moda",
+    "Bokor",
+    "Bona Nova",
+    "Bonbon",
+    "Bonheur Royale",
+    "Boogaloo",
+    "Borel",
+    "Bowlby One",
+    "Bowlby One SC",
+    "Braah One",
+    "Brawler",
+    "Bree Serif",
+    "Bricolage Grotesque",
+    "Bruno Ace",
+    "Bruno Ace SC",
+    "Brygada 1918",
+    "Bubblegum Sans",
+    "Bubbler One",
+    "Buda",
+    "Buenard",
+    "Bungee",
+    "Bungee Hairline",
+    "Bungee Inline",
+    "Bungee Outline",
+    "Bungee Shade",
+    "Bungee Spice",
+    "Butcherman",
+    "Butterfly Kids",
+    "Cabin",
+    "Cabin Condensed",
+    "Cabin Sketch",
+    "Caesar Dressing",
+    "Cagliostro",
+    "Cairo",
+    "Cairo Play",
+    "Caladea",
+    "Calistoga",
+    "Calligraffitti",
+    "Cambay",
+    "Cambo",
+    "Candal",
+    "Cantarell",
+    "Cantata One",
+    "Cantora One",
+    "Caprasimo",
+    "Capriola",
+    "Caramel",
+    "Carattere",
+    "Cardo",
+    "Carlito",
+    "Carme",
+    "Carrois Gothic",
+    "Carrois Gothic SC",
+    "Carter One",
+    "Castoro",
+    "Castoro Titling",
+    "Catamaran",
+    "Caudex",
+    "Caveat",
+    "Caveat Brush",
+    "Cedarville Cursive",
+    "Ceviche One",
+    "Chakra Petch",
+    "Changa",
+    "Changa One",
+    "Chango",
+    "Charis SIL",
+    "Charm",
+    "Charmonman",
+    "Chathura",
+    "Chau Philomene One",
+    "Chela One",
+    "Chelsea Market",
+    "Chenla",
+    "Cherish",
+    "Cherry Bomb One",
+    "Cherry Cream Soda",
+    "Cherry Swash",
+    "Chewy",
+    "Chicle",
+    "Chilanka",
+    "Chivo",
+    "Chivo Mono",
+    "Chokokutai",
+    "Chonburi",
+    "Cinzel",
+    "Cinzel Decorative",
+    "Clicker Script",
+    "Climate Crisis",
+    "Coda",
+    "Coda Caption",
+    "Codystar",
+    "Coiny",
+    "Combo",
+    "Comfortaa",
+    "Comforter",
+    "Comforter Brush",
+    "Comic Neue",
+    "Coming Soon",
+    "Comme",
+    "Commissioner",
+    "Concert One",
+    "Condiment",
+    "Content",
+    "Contrail One",
+    "Convergence",
+    "Cookie",
+    "Copse",
+    "Corben",
+    "Corinthia",
+    "Cormorant",
+    "Cormorant Garamond",
+    "Cormorant Infant",
+    "Cormorant SC",
+    "Cormorant Unicase",
+    "Cormorant Upright",
+    "Courgette",
+    "Courier Prime",
+    "Cousine",
+    "Coustard",
+    "Covered By Your Grace",
+    "Crafty Girls",
+    "Creepster",
+    "Crete Round",
+    "Crimson Pro",
+    "Crimson Text",
+    "Croissant One",
+    "Crushed",
+    "Cuprum",
+    "Cute Font",
+    "Cutive",
+    "Cutive Mono",
+    "Dai Banna SIL",
+    "Damion",
+    "Dancing Script",
+    "Dangrek",
+    "Darker Grotesque",
+    "Darumadrop One",
+    "David Libre",
+    "Dawning of a New Day",
+    "Days One",
+    "Dekko",
+    "Dela Gothic One",
+    "Delicious Handrawn",
+    "Delius",
+    "Delius Swash Caps",
+    "Delius Unicase",
+    "Della Respira",
+    "Denk One",
+    "Devonshire",
+    "Dhurjati",
+    "Didact Gothic",
+    "Diphylleia",
+    "Diplomata",
+    "Diplomata SC",
+    "DM Mono",
+    "DM Sans",
+    "DM Serif Display",
+    "DM Serif Text",
+    "Do Hyeon",
+    "Dokdo",
+    "Domine",
+    "Donegal One",
+    "Dongle",
+    "Doppio One",
+    "Dorsa",
+    "Dosis",
+    "DotGothic16",
+    "Dr Sugiyama",
+    "Duru Sans",
+    "Dynalight",
+    "DynaPuff",
+    "Eagle Lake",
+    "East Sea Dokdo",
+    "Eater",
+    "EB Garamond",
+    "Economica",
+    "Eczar",
+    "Edu NSW ACT Foundation",
+    "Edu QLD Beginner",
+    "Edu SA Beginner",
+    "Edu TAS Beginner",
+    "Edu VIC WA NT Beginner",
+    "El Messiri",
+    "Electrolize",
+    "Elsie",
+    "Elsie Swash Caps",
+    "Emblema One",
+    "Emilys Candy",
+    "Encode Sans",
+    "Encode Sans Condensed",
+    "Encode Sans Expanded",
+    "Encode Sans SC",
+    "Encode Sans Semi Condensed",
+    "Encode Sans Semi Expanded",
+    "Engagement",
+    "Englebert",
+    "Enriqueta",
+    "Ephesis",
+    "Epilogue",
+    "Erica One",
+    "Esteban",
+    "Estonia",
+    "Euphoria Script",
+    "Ewert",
+    "Exo",
+    "Exo 2",
+    "Expletus Sans",
+    "Explora",
+    "Fahkwang",
+    "Familjen Grotesk",
+    "Fanwood Text",
+    "Farro",
+    "Farsan",
+    "Fascinate",
+    "Fascinate Inline",
+    "Faster One",
+    "Fasthand",
+    "Fauna One",
+    "Faustina",
+    "Federant",
+    "Federo",
+    "Felipa",
+    "Fenix",
+    "Festive",
+    "Figtree",
+    "Finger Paint",
+    "Finlandica",
+    "Fira Code",
+    "Fira Mono",
+    "Fira Sans",
+    "Fira Sans Condensed",
+    "Fira Sans Extra Condensed",
+    "Fjalla One",
+    "Fjord One",
+    "Flamenco",
+    "Flavors",
+    "Fleur De Leah",
+    "Flow Block",
+    "Flow Circular",
+    "Flow Rounded",
+    "Foldit",
+    "Fondamento",
+    "Fontdiner Swanky",
+    "Forum",
+    "Fragment Mono",
+    "Francois One",
+    "Frank Ruhl Libre",
+    "Fraunces",
+    "Freckle Face",
+    "Fredericka the Great",
+    "Fredoka",
+    "Freehand",
+    "Fresca",
+    "Frijole",
+    "Fruktur",
+    "Fugaz One",
+    "Fuggles",
+    "Fuzzy Bubbles",
+    "Gabarito",
+    "Gabriela",
+    "Gaegu",
+    "Gafata",
+    "Gajraj One",
+    "Galada",
+    "Galdeano",
+    "Galindo",
+    "Gamja Flower",
+    "Gantari",
+    "Gasoek One",
+    "Gayathri",
+    "Gelasio",
+    "Gemunu Libre",
+    "Genos",
+    "Gentium Book Plus",
+    "Gentium Plus",
+    "Geo",
+    "Geologica",
+    "Georama",
+    "Geostar",
+    "Geostar Fill",
+    "Germania One",
+    "GFS Didot",
+    "GFS Neohellenic",
+    "Gideon Roman",
+    "Gidugu",
+    "Gilda Display",
+    "Girassol",
+    "Give You Glory",
+    "Glass Antiqua",
+    "Glegoo",
+    "Gloock",
+    "Gloria Hallelujah",
+    "Glory",
+    "Gluten",
+    "Goblin One",
+    "Gochi Hand",
+    "Goldman",
+    "Golos Text",
+    "Gorditas",
+    "Gothic A1",
+    "Gotu",
+    "Goudy Bookletter 1911",
+    "Gowun Batang",
+    "Gowun Dodum",
+    "Graduate",
+    "Grand Hotel",
+    "Grandiflora One",
+    "Grandstander",
+    "Grape Nuts",
+    "Gravitas One",
+    "Great Vibes",
+    "Grechen Fuemen",
+    "Grenze",
+    "Grenze Gotisch",
+    "Grey Qo",
+    "Griffy",
+    "Gruppo",
+    "Gudea",
+    "Gugi",
+    "Gulzar",
+    "Gupter",
+    "Gurajada",
+    "Gwendolyn",
+    "Habibi",
+    "Hachi Maru Pop",
+    "Hahmlet",
+    "Halant",
+    "Hammersmith One",
+    "Hanalei",
+    "Hanalei Fill",
+    "Handjet",
+    "Handlee",
+    "Hanken Grotesk",
+    "Hanuman",
+    "Happy Monkey",
+    "Harmattan",
+    "Headland One",
+    "Heebo",
+    "Henny Penny",
+    "Hepta Slab",
+    "Herr Von Muellerhoff",
+    "Hi Melody",
+    "Hina Mincho",
+    "Hind",
+    "Hind Guntur",
+    "Hind Madurai",
+    "Hind Siliguri",
+    "Hind Vadodara",
+    "Holtwood One SC",
+    "Homemade Apple",
+    "Homenaje",
+    "Hubballi",
+    "Hurricane",
+    "Ibarra Real Nova",
+    "IBM Plex Mono",
+    "IBM Plex Sans",
+    "IBM Plex Sans Arabic",
+    "IBM Plex Sans Condensed",
+    "IBM Plex Sans Devanagari",
+    "IBM Plex Sans Hebrew",
+    "IBM Plex Sans JP",
+    "IBM Plex Sans KR",
+    "IBM Plex Sans Thai",
+    "IBM Plex Sans Thai Looped",
+    "IBM Plex Serif",
+    "Iceberg",
+    "Iceland",
+    "IM Fell Double Pica",
+    "IM Fell Double Pica SC",
+    "IM Fell DW Pica",
+    "IM Fell DW Pica SC",
+    "IM Fell English",
+    "IM Fell English SC",
+    "IM Fell French Canon",
+    "IM Fell French Canon SC",
+    "IM Fell Great Primer",
+    "IM Fell Great Primer SC",
+    "Imbue",
+    "Imperial Script",
+    "Imprima",
+    "Inclusive Sans",
+    "Inconsolata",
+    "Inder",
+    "Indie Flower",
+    "Ingrid Darling",
+    "Inika",
+    "Inknut Antiqua",
+    "Inria Sans",
+    "Inria Serif",
+    "Inspiration",
+    "Instrument Sans",
+    "Instrument Serif",
+    "Inter",
+    "Inter Tight",
+    "Irish Grover",
+    "Island Moments",
+    "Istok Web",
+    "Italiana",
+    "Italianno",
+    "Itim",
+    "Jacques Francois",
+    "Jacques Francois Shadow",
+    "Jaldi",
+    "JetBrains Mono",
+    "Jim Nightshade",
+    "Joan",
+    "Jockey One",
+    "Jolly Lodger",
+    "Jomhuria",
+    "Jomolhari",
+    "Josefin Sans",
+    "Josefin Slab",
+    "Jost",
+    "Joti One",
+    "Jua",
+    "Judson",
+    "Julee",
+    "Julius Sans One",
+    "Junge",
+    "Jura",
+    "Just Another Hand",
+    "Just Me Again Down Here",
+    "K2D",
+    "Kablammo",
+    "Kadwa",
+    "Kaisei Decol",
+    "Kaisei HarunoUmi",
+    "Kaisei Opti",
+    "Kaisei Tokumin",
+    "Kalam",
+    "Kameron",
+    "Kanit",
+    "Kantumruy Pro",
+    "Karantina",
+    "Karla",
+    "Karma",
+    "Katibeh",
+    "Kaushan Script",
+    "Kavivanar",
+    "Kavoon",
+    "Kdam Thmor Pro",
+    "Keania One",
+    "Kelly Slab",
+    "Kenia",
+    "Khand",
+    "Khmer",
+    "Khula",
+    "Kings",
+    "Kirang Haerang",
+    "Kite One",
+    "Kiwi Maru",
+    "Klee One",
+    "Knewave",
+    "Kodchasan",
+    "Koh Santepheap",
+    "KoHo",
+    "Kolker Brush",
+    "Konkhmer Sleokchher",
+    "Kosugi",
+    "Kosugi Maru",
+    "Kotta One",
+    "Koulen",
+    "Kranky",
+    "Kreon",
+    "Kristi",
+    "Krona One",
+    "Krub",
+    "Kufam",
+    "Kulim Park",
+    "Kumar One",
+    "Kumar One Outline",
+    "Kumbh Sans",
+    "Kurale",
+    "La Belle Aurore",
+    "Labrada",
+    "Lacquer",
+    "Laila",
+    "Lakki Reddy",
+    "Lalezar",
+    "Lancelot",
+    "Langar",
+    "Lateef",
+    "Lato",
+    "Lavishly Yours",
+    "League Gothic",
+    "League Script",
+    "League Spartan",
+    "Leckerli One",
+    "Ledger",
+    "Lekton",
+    "Lemon",
+    "Lemonada",
+    "Lexend",
+    "Lexend Deca",
+    "Lexend Exa",
+    "Lexend Giga",
+    "Lexend Mega",
+    "Lexend Peta",
+    "Lexend Tera",
+    "Lexend Zetta",
+    "Libre Barcode 128",
+    "Libre Barcode 128 Text",
+    "Libre Barcode 39",
+    "Libre Barcode 39 Extended",
+    "Libre Barcode 39 Extended Text",
+    "Libre Barcode 39 Text",
+    "Libre Barcode EAN13 Text",
+    "Libre Baskerville",
+    "Libre Bodoni",
+    "Libre Caslon Display",
+    "Libre Caslon Text",
+    "Libre Franklin",
+    "Licorice",
+    "Life Savers",
+    "Lilita One",
+    "Lily Script One",
+    "Limelight",
+    "Linden Hill",
+    "Lisu Bosa",
+    "Literata",
+    "Liu Jian Mao Cao",
+    "Livvic",
+    "Lobster",
+    "Lobster Two",
+    "Londrina Outline",
+    "Londrina Shadow",
+    "Londrina Sketch",
+    "Londrina Solid",
+    "Long Cang",
+    "Lora",
+    "Love Light",
+    "Love Ya Like A Sister",
+    "Loved by the King",
+    "Lovers Quarrel",
+    "Luckiest Guy",
+    "Lugrasimo",
+    "Lumanosimo",
+    "Lunasima",
+    "Lusitana",
+    "Lustria",
+    "Luxurious Roman",
+    "Luxurious Script",
+    "M PLUS 1",
+    "M PLUS 1 Code",
+    "M PLUS 1p",
+    "M PLUS 2",
+    "M PLUS Code Latin",
+    "M PLUS Rounded 1c",
+    "Ma Shan Zheng",
+    "Macondo",
+    "Macondo Swash Caps",
+    "Mada",
+    "Magra",
+    "Maiden Orange",
+    "Maitree",
+    "Major Mono Display",
+    "Mako",
+    "Mali",
+    "Mallanna",
+    "Mandali",
+    "Manjari",
+    "Manrope",
+    "Mansalva",
+    "Manuale",
+    "Marcellus",
+    "Marcellus SC",
+    "Marck Script",
+    "Margarine",
+    "Marhey",
+    "Markazi Text",
+    "Marko One",
+    "Marmelad",
+    "Martel",
+    "Martel Sans",
+    "Martian Mono",
+    "Marvel",
+    "Mate",
+    "Mate SC",
+    "Material Icons",
+    "Material Icons Outlined",
+    "Material Icons Round",
+    "Material Icons Sharp",
+    "Material Icons Two Tone",
+    "Material Symbols Outlined",
+    "Material Symbols Rounded",
+    "Material Symbols Sharp",
+    "Maven Pro",
+    "McLaren",
+    "Mea Culpa",
+    "Meddon",
+    "MedievalSharp",
+    "Medula One",
+    "Meera Inimai",
+    "Megrim",
+    "Meie Script",
+    "Meow Script",
+    "Merienda",
+    "Merriweather",
+    "Merriweather Sans",
+    "Metal",
+    "Metal Mania",
+    "Metamorphous",
+    "Metrophobic",
+    "Michroma",
+    "Milonga",
+    "Miltonian",
+    "Miltonian Tattoo",
+    "Mina",
+    "Mingzat",
+    "Miniver",
+    "Miriam Libre",
+    "Mirza",
+    "Miss Fajardose",
+    "Mitr",
+    "Mochiy Pop One",
+    "Mochiy Pop P One",
+    "Modak",
+    "Modern Antiqua",
+    "Mogra",
+    "Mohave",
+    "Moirai One",
+    "Molengo",
+    "Molle",
+    "Monda",
+    "Monofett",
+    "Monomaniac One",
+    "Monoton",
+    "Monsieur La Doulaise",
+    "Montaga",
+    "Montagu Slab",
+    "MonteCarlo",
+    "Montez",
+    "Montserrat",
+    "Montserrat Alternates",
+    "Montserrat Subrayada",
+    "Moo Lah Lah",
+    "Mooli",
+    "Moon Dance",
+    "Moul",
+    "Moulpali",
+    "Mountains of Christmas",
+    "Mouse Memoirs",
+    "Mr Bedfort",
+    "Mr Dafoe",
+    "Mr De Haviland",
+    "Mrs Saint Delafield",
+    "Mrs Sheppards",
+    "Ms Madi",
+    "Mukta",
+    "Mukta Mahee",
+    "Mukta Malar",
+    "Mukta Vaani",
+    "Mulish",
+    "Murecho",
+    "MuseoModerno",
+    "My Soul",
+    "Mynerve",
+    "Mystery Quest",
+    "Nabla",
+    "Nanum Brush Script",
+    "Nanum Gothic",
+    "Nanum Gothic Coding",
+    "Nanum Myeongjo",
+    "Nanum Pen Script",
+    "Narnoor",
+    "Neonderthaw",
+    "Nerko One",
+    "Neucha",
+    "Neuton",
+    "New Rocker",
+    "New Tegomin",
+    "News Cycle",
+    "Newsreader",
+    "Niconne",
+    "Niramit",
+    "Nixie One",
+    "Nobile",
+    "Nokora",
+    "Norican",
+    "Nosifer",
+    "Notable",
+    "Nothing You Could Do",
+    "Noticia Text",
+    "Noto Color Emoji",
+    "Noto Emoji",
+    "Noto Kufi Arabic",
+    "Noto Music",
+    "Noto Naskh Arabic",
+    "Noto Nastaliq Urdu",
+    "Noto Rashi Hebrew",
+    "Noto Sans",
+    "Noto Sans Adlam",
+    "Noto Sans Adlam Unjoined",
+    "Noto Sans Anatolian Hieroglyphs",
+    "Noto Sans Arabic",
+    "Noto Sans Armenian",
+    "Noto Sans Avestan",
+    "Noto Sans Balinese",
+    "Noto Sans Bamum",
+    "Noto Sans Bassa Vah",
+    "Noto Sans Batak",
+    "Noto Sans Bengali",
+    "Noto Sans Bhaiksuki",
+    "Noto Sans Brahmi",
+    "Noto Sans Buginese",
+    "Noto Sans Buhid",
+    "Noto Sans Canadian Aboriginal",
+    "Noto Sans Carian",
+    "Noto Sans Caucasian Albanian",
+    "Noto Sans Chakma",
+    "Noto Sans Cham",
+    "Noto Sans Cherokee",
+    "Noto Sans Chorasmian",
+    "Noto Sans Coptic",
+    "Noto Sans Cuneiform",
+    "Noto Sans Cypriot",
+    "Noto Sans Cypro Minoan",
+    "Noto Sans Deseret",
+    "Noto Sans Devanagari",
+    "Noto Sans Display",
+    "Noto Sans Duployan",
+    "Noto Sans Egyptian Hieroglyphs",
+    "Noto Sans Elbasan",
+    "Noto Sans Elymaic",
+    "Noto Sans Ethiopic",
+    "Noto Sans Georgian",
+    "Noto Sans Glagolitic",
+    "Noto Sans Gothic",
+    "Noto Sans Grantha",
+    "Noto Sans Gujarati",
+    "Noto Sans Gunjala Gondi",
+    "Noto Sans Gurmukhi",
+    "Noto Sans Hanifi Rohingya",
+    "Noto Sans Hanunoo",
+    "Noto Sans Hatran",
+    "Noto Sans Hebrew",
+    "Noto Sans HK",
+    "Noto Sans Imperial Aramaic",
+    "Noto Sans Indic Siyaq Numbers",
+    "Noto Sans Inscriptional Pahlavi",
+    "Noto Sans Inscriptional Parthian",
+    "Noto Sans Javanese",
+    "Noto Sans JP",
+    "Noto Sans Kaithi",
+    "Noto Sans Kannada",
+    "Noto Sans Kayah Li",
+    "Noto Sans Kharoshthi",
+    "Noto Sans Khmer",
+    "Noto Sans Khojki",
+    "Noto Sans Khudawadi",
+    "Noto Sans KR",
+    "Noto Sans Lao",
+    "Noto Sans Lao Looped",
+    "Noto Sans Lepcha",
+    "Noto Sans Limbu",
+    "Noto Sans Linear A",
+    "Noto Sans Linear B",
+    "Noto Sans Lisu",
+    "Noto Sans Lycian",
+    "Noto Sans Lydian",
+    "Noto Sans Mahajani",
+    "Noto Sans Malayalam",
+    "Noto Sans Mandaic",
+    "Noto Sans Manichaean",
+    "Noto Sans Marchen",
+    "Noto Sans Masaram Gondi",
+    "Noto Sans Math",
+    "Noto Sans Mayan Numerals",
+    "Noto Sans Medefaidrin",
+    "Noto Sans Meetei Mayek",
+    "Noto Sans Mende Kikakui",
+    "Noto Sans Meroitic",
+    "Noto Sans Miao",
+    "Noto Sans Modi",
+    "Noto Sans Mongolian",
+    "Noto Sans Mono",
+    "Noto Sans Mro",
+    "Noto Sans Multani",
+    "Noto Sans Myanmar",
+    "Noto Sans Nabataean",
+    "Noto Sans Nag Mundari",
+    "Noto Sans Nandinagari",
+    "Noto Sans New Tai Lue",
+    "Noto Sans Newa",
+    "Noto Sans NKo",
+    "Noto Sans NKo Unjoined",
+    "Noto Sans Nushu",
+    "Noto Sans Ogham",
+    "Noto Sans Ol Chiki",
+    "Noto Sans Old Hungarian",
+    "Noto Sans Old Italic",
+    "Noto Sans Old North Arabian",
+    "Noto Sans Old Permic",
+    "Noto Sans Old Persian",
+    "Noto Sans Old Sogdian",
+    "Noto Sans Old South Arabian",
+    "Noto Sans Old Turkic",
+    "Noto Sans Oriya",
+    "Noto Sans Osage",
+    "Noto Sans Osmanya",
+    "Noto Sans Pahawh Hmong",
+    "Noto Sans Palmyrene",
+    "Noto Sans Pau Cin Hau",
+    "Noto Sans Phags Pa",
+    "Noto Sans Phoenician",
+    "Noto Sans Psalter Pahlavi",
+    "Noto Sans Rejang",
+    "Noto Sans Runic",
+    "Noto Sans Samaritan",
+    "Noto Sans Saurashtra",
+    "Noto Sans SC",
+    "Noto Sans Sharada",
+    "Noto Sans Shavian",
+    "Noto Sans Siddham",
+    "Noto Sans SignWriting",
+    "Noto Sans Sinhala",
+    "Noto Sans Sogdian",
+    "Noto Sans Sora Sompeng",
+    "Noto Sans Soyombo",
+    "Noto Sans Sundanese",
+    "Noto Sans Syloti Nagri",
+    "Noto Sans Symbols",
+    "Noto Sans Symbols 2",
+    "Noto Sans Syriac",
+    "Noto Sans Syriac Eastern",
+    "Noto Sans Tagalog",
+    "Noto Sans Tagbanwa",
+    "Noto Sans Tai Le",
+    "Noto Sans Tai Tham",
+    "Noto Sans Tai Viet",
+    "Noto Sans Takri",
+    "Noto Sans Tamil",
+    "Noto Sans Tamil Supplement",
+    "Noto Sans Tangsa",
+    "Noto Sans TC",
+    "Noto Sans Telugu",
+    "Noto Sans Thaana",
+    "Noto Sans Thai",
+    "Noto Sans Thai Looped",
+    "Noto Sans Tifinagh",
+    "Noto Sans Tirhuta",
+    "Noto Sans Ugaritic",
+    "Noto Sans Vai",
+    "Noto Sans Vithkuqi",
+    "Noto Sans Wancho",
+    "Noto Sans Warang Citi",
+    "Noto Sans Yi",
+    "Noto Sans Zanabazar Square",
+    "Noto Serif",
+    "Noto Serif Ahom",
+    "Noto Serif Armenian",
+    "Noto Serif Balinese",
+    "Noto Serif Bengali",
+    "Noto Serif Devanagari",
+    "Noto Serif Display",
+    "Noto Serif Dogra",
+    "Noto Serif Ethiopic",
+    "Noto Serif Georgian",
+    "Noto Serif Grantha",
+    "Noto Serif Gujarati",
+    "Noto Serif Gurmukhi",
+    "Noto Serif Hebrew",
+    "Noto Serif HK",
+    "Noto Serif JP",
+    "Noto Serif Kannada",
+    "Noto Serif Khitan Small Script",
+    "Noto Serif Khmer",
+    "Noto Serif Khojki",
+    "Noto Serif KR",
+    "Noto Serif Lao",
+    "Noto Serif Makasar",
+    "Noto Serif Malayalam",
+    "Noto Serif Myanmar",
+    "Noto Serif NP Hmong",
+    "Noto Serif Oriya",
+    "Noto Serif Ottoman Siyaq",
+    "Noto Serif SC",
+    "Noto Serif Sinhala",
+    "Noto Serif Tamil",
+    "Noto Serif Tangut",
+    "Noto Serif TC",
+    "Noto Serif Telugu",
+    "Noto Serif Thai",
+    "Noto Serif Tibetan",
+    "Noto Serif Toto",
+    "Noto Serif Vithkuqi",
+    "Noto Serif Yezidi",
+    "Noto Traditional Nushu",
+    "Nova Cut",
+    "Nova Flat",
+    "Nova Mono",
+    "Nova Oval",
+    "Nova Round",
+    "Nova Script",
+    "Nova Slim",
+    "Nova Square",
+    "NTR",
+    "Numans",
+    "Nunito",
+    "Nunito Sans",
+    "Nuosu SIL",
+    "Odibee Sans",
+    "Odor Mean Chey",
+    "Offside",
+    "Oi",
+    "Old Standard TT",
+    "Oldenburg",
+    "Ole",
+    "Oleo Script",
+    "Oleo Script Swash Caps",
+    "Onest",
+    "Oooh Baby",
+    "Open Sans",
+    "Oranienbaum",
+    "Orbit",
+    "Orbitron",
+    "Oregano",
+    "Orelega One",
+    "Orienta",
+    "Original Surfer",
+    "Oswald",
+    "Outfit",
+    "Over the Rainbow",
+    "Overlock",
+    "Overlock SC",
+    "Overpass",
+    "Overpass Mono",
+    "Ovo",
+    "Oxanium",
+    "Oxygen",
+    "Oxygen Mono",
+    "Pacifico",
+    "Padauk",
+    "Padyakke Expanded One",
+    "Palanquin",
+    "Palanquin Dark",
+    "Palette Mosaic",
+    "Pangolin",
+    "Paprika",
+    "Parisienne",
+    "Passero One",
+    "Passion One",
+    "Passions Conflict",
+    "Pathway Extreme",
+    "Pathway Gothic One",
+    "Patrick Hand",
+    "Patrick Hand SC",
+    "Pattaya",
+    "Patua One",
+    "Pavanam",
+    "Paytone One",
+    "Peddana",
+    "Peralta",
+    "Permanent Marker",
+    "Petemoss",
+    "Petit Formal Script",
+    "Petrona",
+    "Philosopher",
+    "Phudu",
+    "Piazzolla",
+    "Piedra",
+    "Pinyon Script",
+    "Pirata One",
+    "Pixelify Sans",
+    "Plaster",
+    "Play",
+    "Playball",
+    "Playfair",
+    "Playfair Display",
+    "Playfair Display SC",
+    "Playpen Sans",
+    "Plus Jakarta Sans",
+    "Podkova",
+    "Poiret One",
+    "Poller One",
+    "Poltawski Nowy",
+    "Poly",
+    "Pompiere",
+    "Pontano Sans",
+    "Poor Story",
+    "Poppins",
+    "Port Lligat Sans",
+    "Port Lligat Slab",
+    "Potta One",
+    "Pragati Narrow",
+    "Praise",
+    "Prata",
+    "Preahvihear",
+    "Press Start 2P",
+    "Pridi",
+    "Princess Sofia",
+    "Prociono",
+    "Prompt",
+    "Prosto One",
+    "Proza Libre",
+    "PT Mono",
+    "PT Sans",
+    "PT Sans Caption",
+    "PT Sans Narrow",
+    "PT Serif",
+    "PT Serif Caption",
+    "Public Sans",
+    "Puppies Play",
+    "Puritan",
+    "Purple Purse",
+    "Qahiri",
+    "Quando",
+    "Quantico",
+    "Quattrocento",
+    "Quattrocento Sans",
+    "Questrial",
+    "Quicksand",
+    "Quintessential",
+    "Qwigley",
+    "Qwitcher Grypen",
+    "Racing Sans One",
+    "Radio Canada",
+    "Radley",
+    "Rajdhani",
+    "Rakkas",
+    "Raleway",
+    "Raleway Dots",
+    "Ramabhadra",
+    "Ramaraja",
+    "Rambla",
+    "Rammetto One",
+    "Rampart One",
+    "Ranchers",
+    "Rancho",
+    "Ranga",
+    "Rasa",
+    "Rationale",
+    "Ravi Prakash",
+    "Readex Pro",
+    "Recursive",
+    "Red Hat Display",
+    "Red Hat Mono",
+    "Red Hat Text",
+    "Red Rose",
+    "Redacted",
+    "Redacted Script",
+    "Redressed",
+    "Reem Kufi",
+    "Reem Kufi Fun",
+    "Reem Kufi Ink",
+    "Reenie Beanie",
+    "Reggae One",
+    "REM",
+    "Revalia",
+    "Rhodium Libre",
+    "Ribeye",
+    "Ribeye Marrow",
+    "Righteous",
+    "Risque",
+    "Road Rage",
+    "Roboto",
+    "Roboto Condensed",
+    "Roboto Flex",
+    "Roboto Mono",
+    "Roboto Serif",
+    "Roboto Slab",
+    "Rochester",
+    "Rock 3D",
+    "Rock Salt",
+    "RocknRoll One",
+    "Rokkitt",
+    "Romanesco",
+    "Ropa Sans",
+    "Rosario",
+    "Rosarivo",
+    "Rouge Script",
+    "Rowdies",
+    "Rozha One",
+    "Rubik",
+    "Rubik 80s Fade",
+    "Rubik Beastly",
+    "Rubik Bubbles",
+    "Rubik Burned",
+    "Rubik Dirt",
+    "Rubik Distressed",
+    "Rubik Gemstones",
+    "Rubik Glitch",
+    "Rubik Iso",
+    "Rubik Marker Hatch",
+    "Rubik Maze",
+    "Rubik Microbe",
+    "Rubik Mono One",
+    "Rubik Moonrocks",
+    "Rubik Pixels",
+    "Rubik Puddles",
+    "Rubik Spray Paint",
+    "Rubik Storm",
+    "Rubik Vinyl",
+    "Rubik Wet Paint",
+    "Ruda",
+    "Rufina",
+    "Ruge Boogie",
+    "Ruluko",
+    "Rum Raisin",
+    "Ruslan Display",
+    "Russo One",
+    "Ruthie",
+    "Ruwudu",
+    "Rye",
+    "Sacramento",
+    "Sahitya",
+    "Sail",
+    "Saira",
+    "Saira Condensed",
+    "Saira Extra Condensed",
+    "Saira Semi Condensed",
+    "Saira Stencil One",
+    "Salsa",
+    "Sanchez",
+    "Sancreek",
+    "Sansita",
+    "Sansita Swashed",
+    "Sarabun",
+    "Sarala",
+    "Sarina",
+    "Sarpanch",
+    "Sassy Frass",
+    "Satisfy",
+    "Sawarabi Gothic",
+    "Sawarabi Mincho",
+    "Scada",
+    "Scheherazade New",
+    "Schibsted Grotesk",
+    "Schoolbell",
+    "Scope One",
+    "Seaweed Script",
+    "Secular One",
+    "Sedgwick Ave",
+    "Sedgwick Ave Display",
+    "Sen",
+    "Send Flowers",
+    "Sevillana",
+    "Seymour One",
+    "Shadows Into Light",
+    "Shadows Into Light Two",
+    "Shalimar",
+    "Shantell Sans",
+    "Shanti",
+    "Share",
+    "Share Tech",
+    "Share Tech Mono",
+    "Shippori Antique",
+    "Shippori Antique B1",
+    "Shippori Mincho",
+    "Shippori Mincho B1",
+    "Shizuru",
+    "Shojumaru",
+    "Short Stack",
+    "Shrikhand",
+    "Siemreap",
+    "Sigmar",
+    "Sigmar One",
+    "Signika",
+    "Signika Negative",
+    "Silkscreen",
+    "Simonetta",
+    "Single Day",
+    "Sintony",
+    "Sirin Stencil",
+    "Six Caps",
+    "Skranji",
+    "Slabo 13px",
+    "Slabo 27px",
+    "Slackey",
+    "Slackside One",
+    "Smokum",
+    "Smooch",
+    "Smooch Sans",
+    "Smythe",
+    "Sniglet",
+    "Snippet",
+    "Snowburst One",
+    "Sofadi One",
+    "Sofia",
+    "Sofia Sans",
+    "Sofia Sans Condensed",
+    "Sofia Sans Extra Condensed",
+    "Sofia Sans Semi Condensed",
+    "Solitreo",
+    "Solway",
+    "Sometype Mono",
+    "Song Myung",
+    "Sono",
+    "Sonsie One",
+    "Sora",
+    "Sorts Mill Goudy",
+    "Source Code Pro",
+    "Source Sans 3",
+    "Source Serif 4",
+    "Space Grotesk",
+    "Space Mono",
+    "Special Elite",
+    "Spectral",
+    "Spectral SC",
+    "Spicy Rice",
+    "Spinnaker",
+    "Spirax",
+    "Splash",
+    "Spline Sans",
+    "Spline Sans Mono",
+    "Squada One",
+    "Square Peg",
+    "Sree Krushnadevaraya",
+    "Sriracha",
+    "Srisakdi",
+    "Staatliches",
+    "Stalemate",
+    "Stalinist One",
+    "Stardos Stencil",
+    "Stick",
+    "Stick No Bills",
+    "Stint Ultra Condensed",
+    "Stint Ultra Expanded",
+    "STIX Two Text",
+    "Stoke",
+    "Strait",
+    "Style Script",
+    "Stylish",
+    "Sue Ellen Francisco",
+    "Suez One",
+    "Sulphur Point",
+    "Sumana",
+    "Sunflower",
+    "Sunshiney",
+    "Supermercado One",
+    "Sura",
+    "Suranna",
+    "Suravaram",
+    "Suwannaphum",
+    "Swanky and Moo Moo",
+    "Syncopate",
+    "Syne",
+    "Syne Mono",
+    "Syne Tactile",
+    "Tai Heritage Pro",
+    "Tajawal",
+    "Tangerine",
+    "Tapestry",
+    "Taprom",
+    "Tauri",
+    "Taviraj",
+    "Teko",
+    "Tektur",
+    "Telex",
+    "Tenali Ramakrishna",
+    "Tenor Sans",
+    "Text Me One",
+    "Texturina",
+    "Thasadith",
+    "The Girl Next Door",
+    "The Nautigal",
+    "Tienne",
+    "Tillana",
+    "Tilt Neon",
+    "Tilt Prism",
+    "Tilt Warp",
+    "Timmana",
+    "Tinos",
+    "Tiro Bangla",
+    "Tiro Devanagari Hindi",
+    "Tiro Devanagari Marathi",
+    "Tiro Devanagari Sanskrit",
+    "Tiro Gurmukhi",
+    "Tiro Kannada",
+    "Tiro Tamil",
+    "Tiro Telugu",
+    "Titan One",
+    "Titillium Web",
+    "Tomorrow",
+    "Tourney",
+    "Trade Winds",
+    "Train One",
+    "Trirong",
+    "Trispace",
+    "Trocchi",
+    "Trochut",
+    "Truculenta",
+    "Trykker",
+    "Tsukimi Rounded",
+    "Tulpen One",
+    "Turret Road",
+    "Twinkle Star",
+    "Ubuntu",
+    "Ubuntu Condensed",
+    "Ubuntu Mono",
+    "Uchen",
+    "Ultra",
+    "Unbounded",
+    "Uncial Antiqua",
+    "Underdog",
+    "Unica One",
+    "UnifrakturCook",
+    "UnifrakturMaguntia",
+    "Unkempt",
+    "Unlock",
+    "Unna",
+    "Updock",
+    "Urbanist",
+    "Vampiro One",
+    "Varela",
+    "Varela Round",
+    "Varta",
+    "Vast Shadow",
+    "Vazirmatn",
+    "Vesper Libre",
+    "Viaoda Libre",
+    "Vibes",
+    "Vibur",
+    "Victor Mono",
+    "Vidaloka",
+    "Viga",
+    "Vina Sans",
+    "Voces",
+    "Volkhov",
+    "Vollkorn",
+    "Vollkorn SC",
+    "Voltaire",
+    "VT323",
+    "Vujahday Script",
+    "Waiting for the Sunrise",
+    "Wallpoet",
+    "Walter Turncoat",
+    "Warnes",
+    "Water Brush",
+    "Waterfall",
+    "Wavefont",
+    "Wellfleet",
+    "Wendy One",
+    "Whisper",
+    "WindSong",
+    "Wire One",
+    "Wix Madefor Display",
+    "Wix Madefor Text",
+    "Work Sans",
+    "Xanh Mono",
+    "Yaldevi",
+    "Yanone Kaffeesatz",
+    "Yantramanav",
+    "Yatra One",
+    "Yellowtail",
+    "Yeon Sung",
+    "Yeseva One",
+    "Yesteryear",
+    "Yomogi",
+    "Young Serif",
+    "Yrsa",
+    "Ysabeau",
+    "Ysabeau Infant",
+    "Ysabeau Office",
+    "Ysabeau SC",
+    "Yuji Boku",
+    "Yuji Hentaigana Akari",
+    "Yuji Hentaigana Akebono",
+    "Yuji Mai",
+    "Yuji Syuku",
+    "Yusei Magic",
+    "ZCOOL KuaiLe",
+    "ZCOOL QingKe HuangYou",
+    "ZCOOL XiaoWei",
+    "Zen Antique",
+    "Zen Antique Soft",
+    "Zen Dots",
+    "Zen Kaku Gothic Antique",
+    "Zen Kaku Gothic New",
+    "Zen Kurenaido",
+    "Zen Loop",
+    "Zen Maru Gothic",
+    "Zen Old Mincho",
+    "Zen Tokyo Zoo",
+    "Zeyada",
+    "Zhi Mang Xing",
+    "Zilla Slab",
+    "Zilla Slab Highlight"
+];
+exports.GOOGLE_FONT_CACHE_SOURCE = "local-google-fonts-json";
 }
 };
 var cache = {};

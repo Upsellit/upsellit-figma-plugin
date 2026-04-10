@@ -9,6 +9,116 @@ const ts = require('typescript');
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const entryFile = path.join(projectRoot, 'main.ts');
 const outputFile = path.join(projectRoot, 'main.js');
+const googleFontsCacheFile = path.join(projectRoot, 'render', 'google-fonts-cache.ts');
+const googleFontsJsonFile = path.join(projectRoot, 'render', 'google-fonts.json');
+
+function parseDotEnv(source) {
+  const env = {};
+  for (const line of source.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex === -1) continue;
+    const key = trimmed.slice(0, separatorIndex).trim();
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+function fontCacheModuleSource(families, sourceLabel) {
+  return (
+    'export const GOOGLE_FONT_FAMILIES = ' +
+    JSON.stringify(families, null, 2) +
+    ';\n\nexport const GOOGLE_FONT_CACHE_SOURCE = ' +
+    JSON.stringify(sourceLabel) +
+    ';\n'
+  );
+}
+
+async function updateGoogleFontsCache() {
+  try {
+    const localJson = JSON.parse(await fs.readFile(googleFontsJsonFile, 'utf8'));
+    if (localJson && typeof localJson === 'object' && !Array.isArray(localJson)) {
+      const families = Object.keys(localJson)
+        .map(function (family) {
+          return String(family).trim();
+        })
+        .filter(Boolean)
+        .sort(function (a, b) {
+          return a.localeCompare(b);
+        });
+      if (families.length) {
+        await fs.writeFile(googleFontsCacheFile, fontCacheModuleSource(families, 'local-google-fonts-json'), 'utf8');
+        return;
+      }
+    }
+  } catch (_error) {
+    // Fall through to API/cached fallback.
+  }
+
+  let envSource = '';
+  try {
+    envSource = await fs.readFile(path.join(projectRoot, '.env'), 'utf8');
+  } catch (_error) {
+    try {
+      await fs.access(googleFontsCacheFile);
+    } catch (_accessError) {
+      await fs.writeFile(
+        googleFontsCacheFile,
+        fontCacheModuleSource(['Merriweather Sans'], 'fallback'),
+        'utf8'
+      );
+    }
+    return;
+  }
+
+  const env = parseDotEnv(envSource);
+  const apiKey = env.GOOGLE_FONTS;
+  if (!apiKey) return;
+
+  try {
+    const response = await fetch('https://www.googleapis.com/webfonts/v1/webfonts?key=' + encodeURIComponent(apiKey));
+    if (!response.ok) {
+      throw new Error('Google Fonts API returned ' + response.status);
+    }
+
+    const payload = await response.json();
+    const families = Array.isArray(payload && payload.items)
+      ? payload.items
+          .map(function (item) {
+            return item && typeof item.family === 'string' ? item.family.trim() : '';
+          })
+          .filter(Boolean)
+          .sort(function (a, b) {
+            return a.localeCompare(b);
+          })
+      : [];
+
+    if (!families.length) {
+      throw new Error('Google Fonts API returned no families');
+    }
+
+    await fs.writeFile(googleFontsCacheFile, fontCacheModuleSource(families, 'google-fonts-api'), 'utf8');
+  } catch (error) {
+    console.warn('[build-plugin] Unable to refresh Google Fonts cache:', error instanceof Error ? error.message : String(error));
+    try {
+      await fs.access(googleFontsCacheFile);
+    } catch (_accessError) {
+      await fs.writeFile(
+        googleFontsCacheFile,
+        fontCacheModuleSource(['Merriweather Sans'], 'fallback'),
+        'utf8'
+      );
+    }
+  }
+}
 
 function normalizeToPosix(filePath) {
   return filePath.split(path.sep).join('/');
@@ -145,6 +255,7 @@ function bundleModules(graph) {
 }
 
 const graph = new Map();
+await updateGoogleFontsCache();
 await buildModuleGraph(entryFile, graph, new Set());
 const bundle = bundleModules(graph);
 await fs.writeFile(outputFile, bundle, 'utf8');

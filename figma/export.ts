@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { AnyNode, ExportFile, NodeBounds, NodeStyle, SizingMode, NormalizedNode } from '../types';
+import { AnyNode, ExportFile, NodeBounds, NodeStyle, SizingMode, NormalizedNode, MediaAsset } from '../types';
 import { sanitizeFilePart } from '../utils/string';
 import { getNodeChildren, getPluginMeta, setPluginMeta } from './shared';
 import { flattenTree } from '../utils/tree';
 import { normalizeNode } from './analyze';
+import { COMPONENT_BY_ID, COMPONENT_BY_ROLE } from '../constants';
 
 export function getYearMonth(): string {
   const now = new Date();
@@ -133,6 +134,61 @@ export function extractNodeStyle(node: AnyNode): NodeStyle {
   const strokes = node.strokes !== figma.mixed ? node.strokes : undefined;
   const fill = firstVisiblePaint(fills);
   const stroke = firstVisiblePaint(strokes);
+  let overflowX: string | undefined;
+  let overflowY: string | undefined;
+
+  if (node && node.clipsContent === true) {
+    overflowX = 'hidden';
+    overflowY = 'hidden';
+  }
+
+  const overflowDirection = String(node && node.overflowDirection ? node.overflowDirection : '').toUpperCase();
+  if (overflowDirection === 'HORIZONTAL_SCROLLING') {
+    overflowX = 'auto';
+    overflowY = overflowY || 'hidden';
+  } else if (overflowDirection === 'VERTICAL_SCROLLING') {
+    overflowY = 'auto';
+    overflowX = overflowX || 'hidden';
+  } else if (overflowDirection === 'HORIZONTAL_AND_VERTICAL_SCROLLING') {
+    overflowX = 'auto';
+    overflowY = 'auto';
+  }
+
+  let boxShadow: string | undefined;
+  if (Array.isArray(node && node.effects)) {
+    const shadows = node.effects
+      .filter(function(effect: AnyNode) {
+        return effect && effect.visible !== false && (effect.type === 'DROP_SHADOW' || effect.type === 'LAYER_BLUR');
+      })
+      .map(function(effect: AnyNode) {
+        if (effect.type === 'LAYER_BLUR' && typeof effect.radius === 'number') {
+          return '0 0 ' + effect.radius + 'px rgba(255, 255, 255, 0.55)';
+        }
+        const color = effect.color || { r: 0, g: 0, b: 0, a: 0.25 };
+        const alpha = color.a == null ? 1 : color.a;
+        const x = effect.offset && typeof effect.offset.x === 'number' ? effect.offset.x : 0;
+        const y = effect.offset && typeof effect.offset.y === 'number' ? effect.offset.y : 0;
+        const blur = typeof effect.radius === 'number' ? effect.radius : 0;
+        return (
+          x +
+          'px ' +
+          y +
+          'px ' +
+          blur +
+          'px rgba(' +
+          Math.round((color.r || 0) * 255) +
+          ', ' +
+          Math.round((color.g || 0) * 255) +
+          ', ' +
+          Math.round((color.b || 0) * 255) +
+          ', ' +
+          alpha +
+          ')'
+        );
+      })
+      .filter(Boolean);
+    boxShadow = shadows.length ? shadows.join(', ') : undefined;
+  }
 
   return Object.assign(
     {
@@ -143,6 +199,9 @@ export function extractNodeStyle(node: AnyNode): NodeStyle {
         typeof node.cornerRadius === 'number' && !Number.isNaN(node.cornerRadius)
           ? node.cornerRadius
           : undefined,
+      overflowX: overflowX,
+      overflowY: overflowY,
+      boxShadow: boxShadow,
       opacity: typeof node.opacity === 'number' ? node.opacity : undefined,
     },
     extractTextStyle(node)
@@ -229,14 +288,32 @@ export function buildNodeIndex(root: AnyNode): Map<string, AnyNode> {
 export function getExportPageNodes(rootNode: AnyNode): Array<{ key: string; node: AnyNode }> {
   const children = getNodeChildren(rootNode);
   const pages: Array<{ key: string; node: AnyNode }> = [];
-  const wanted = ['p1', 'p2', 'p3'];
-
-  for (let index = 0; index < wanted.length; index += 1) {
-    const key = wanted[index];
-    const match = children.find(function (child) {
-      return String(child && child.name ? child.name : '').trim().toLowerCase() === key;
+  const namedPages = children
+    .map(function (child) {
+      const rawName = String(child && child.name ? child.name : '').trim().toLowerCase();
+      const match = rawName.match(/(?:^|-)p(\d+)$/);
+      if (!match) return null;
+      return {
+        key: 'p' + String(Number(match[1])),
+        order: Number(match[1]),
+        node: child,
+      };
+    })
+    .filter(function (
+      page
+    ): page is {
+      key: string;
+      order: number;
+      node: AnyNode;
+    } {
+      return page !== null;
+    })
+    .sort(function (a, b) {
+      return a.order - b.order;
     });
-    if (match) pages.push({ key: key, node: match });
+
+  for (let index = 0; index < namedPages.length; index += 1) {
+    pages.push({ key: namedPages[index].key, node: namedPages[index].node });
   }
 
   if (!pages.length) {
@@ -284,29 +361,73 @@ export async function attachProductAssets(
   return assets;
 }
 
+export async function attachMediaAssets(
+  root: NormalizedNode,
+  nodeIndex: Map<string, AnyNode>,
+  exportBaseName: string
+): Promise<ExportFile[]> {
+  const mediaNodes = flattenTree(root).filter(function (node) {
+    return (
+      !node.ignored &&
+      node.detectedRole === 'image' &&
+      node.componentOverride === 'media_panel'
+    );
+  });
+  const mediaAssets: MediaAsset[] = mediaNodes.map(function (node, index) {
+    return {
+      name: node.name || 'Media ' + String(index + 1),
+      _imageNodeId: node.id,
+    };
+  });
+  const assets: ExportFile[] = [];
+  const seen = new Set<string>();
+
+  for (let index = 0; index < mediaAssets.length; index += 1) {
+    const mediaAsset = mediaAssets[index];
+    if (!mediaAsset._imageNodeId || seen.has(mediaAsset._imageNodeId)) continue;
+    const sourceNode = nodeIndex.get(mediaAsset._imageNodeId);
+    if (!sourceNode || !hasImageFill(sourceNode)) continue;
+
+    const assetName = exportBaseName + '-media-' + (index + 1) + '.png';
+    const asset = await exportNodeImage(sourceNode, assetName);
+    if (!asset) continue;
+
+    const targetNode = mediaNodes.find(function (node) {
+      return node.id === mediaAsset._imageNodeId;
+    });
+    if (targetNode) {
+      targetNode.imageAsset = assetName;
+    }
+    mediaAsset.imageAsset = assetName;
+    assets.push(asset);
+    seen.add(mediaAsset._imageNodeId);
+  }
+
+  return assets;
+}
+
 export async function exportFlattenedBackgroundVariant(
   rootNode: AnyNode,
-  dynamicNodeIds: string[],
   alwaysHiddenNodeIds: string[],
-  removeAllText: boolean,
+  variant: 'liveText' | 'textBaked',
   fileName: string,
   uniqueIds: (ids: string[]) => string[]
 ): Promise<ExportFile | null> {
   if (!rootNode || typeof rootNode.clone !== 'function') return null;
   const clone = rootNode.clone();
   const pathMaps = buildPathMaps(rootNode);
-  const disclaimerIds = new Set<string>();
-  const inputIds = new Set<string>();
   const normalizedRoot = normalizeNode(rootNode);
-  flattenTree(normalizedRoot).forEach(function(node: NormalizedNode) {
-    if (node.componentOverride === 'disclaimer_text') {
-      disclaimerIds.add(node.id);
-    }
-    if (node.componentOverride === 'email_input' || node.componentOverride === 'phone_input') {
-      inputIds.add(node.id);
-    }
-  });
-  const hidePaths = uniqueIds(dynamicNodeIds.concat(alwaysHiddenNodeIds).concat(Array.from(disclaimerIds)))
+  const componentHiddenIds = flattenTree(normalizedRoot)
+    .filter(function(node: NormalizedNode) {
+      const definition =
+        (node.componentOverride && COMPONENT_BY_ID[node.componentOverride]) ||
+        (node.detectedRole && node.detectedRole !== 'other' ? COMPONENT_BY_ROLE[node.detectedRole] : undefined);
+      return !!(definition && definition.render && definition.render.flattened && definition.render.flattened[variant] === false);
+    })
+    .map(function(node: NormalizedNode) {
+      return node.id;
+    });
+  const hidePaths = uniqueIds(componentHiddenIds.concat(alwaysHiddenNodeIds))
     .map(function (id) {
       return pathMaps.idToPath.get(id) || '';
     })
@@ -322,34 +443,6 @@ export async function exportFlattenedBackgroundVariant(
       } else {
         node.visible = false;
       }
-    }
-
-    if (removeAllText) {
-      walkScenePaths(clone, function (node) {
-        if (node.type !== 'TEXT') return;
-        if ('opacity' in node && typeof node.opacity === 'number') {
-          node.opacity = 0;
-        } else {
-          node.visible = false;
-        }
-      });
-
-      // Hide all subcomponents for background-only export
-      function hideChildren(node: AnyNode) {
-        if ('children' in node && Array.isArray(node.children)) {
-          for (const child of node.children) {
-            if (child.type === 'TEXT') continue; // Skip text nodes to keep them visible
-            if (inputIds.has(child.id)) continue; // Keep input backgrounds visible
-            if ('opacity' in child && typeof child.opacity === 'number') {
-              child.opacity = 0;
-            } else {
-              child.visible = false;
-            }
-            hideChildren(child);
-          }
-        }
-      }
-      hideChildren(clone);
     }
 
     return await exportNodeImage(clone, fileName);
@@ -411,7 +504,15 @@ export function getExportRoots(selection: readonly SceneNode[], page: PageNode):
     const seen = new Set<string>();
     const frames: AnyNode[] = [];
     for (let index = 0; index < selectedRoots.length; index += 1) {
-      const nextFrames = collectExportFrames(selectedRoots[index]);
+      const selectedRoot = selectedRoots[index] as AnyNode;
+      if (getExportPageNodes(selectedRoot).length > 1) {
+        const id = String(selectedRoot.id || '');
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        frames.push(selectedRoot);
+        continue;
+      }
+      const nextFrames = collectExportFrames(selectedRoot);
       for (let frameIndex = 0; frameIndex < nextFrames.length; frameIndex += 1) {
         const frame = nextFrames[frameIndex];
         const id = String(frame.id || '');

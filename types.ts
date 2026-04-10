@@ -15,6 +15,9 @@ export type ComponentTemplateId =
   | 'thank_you_button'
   | 'no_thanks_button'
   | 'product_grid'
+  | 'recommendation_grid'
+  | 'page_left'
+  | 'page_right'
   | 'product_card'
   | 'product_image'
   | 'product_title'
@@ -86,6 +89,7 @@ export type LayoutAlign =
 export type NodeLayout = {
   mode: LayoutKind;
   wrap: boolean;
+  positioning?: 'AUTO' | 'ABSOLUTE';
 
   // existing normalized fields
   gap: number;
@@ -123,6 +127,9 @@ export type NodeStyle = {
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;
+  overflowX?: string;
+  overflowY?: string;
+  boxShadow?: string;
   opacity?: number;
   fontFamily?: string;
   fontStyle?: string;
@@ -164,6 +171,7 @@ export type NormalizedNode = {
   type: string;
   visible: boolean;
   ignored: boolean;
+  imageAsset?: string;
   roleOverride?: ExportRole;
   componentOverride?: ComponentTemplateId;
   collection?: string;
@@ -183,6 +191,12 @@ export type Product = {
   price?: string;
   cta?: string;
   imageAlt?: string;
+  imageAsset?: string;
+  _imageNodeId?: string;
+};
+
+export type MediaAsset = {
+  name?: string;
   imageAsset?: string;
   _imageNodeId?: string;
 };
@@ -247,6 +261,7 @@ export type FlattenedVariant = {
   imageFileName: string;
   js: string;
   contentHTML: string;
+  runtimeContentHTML: string;
 };
 
 export type CommonComponentDefinition = {

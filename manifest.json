@@ -11,5 +11,9 @@
   "networkAccess": {
     "allowedDomains": ["https://cdnjs.cloudflare.com"],
     "reasoning": "Load JSZip for downloadable ZIP packages."
-  }
+  },
+  "menu": [
+    { "name": "Open UI", "command": "open-ui" },
+    { "name": "Export Package", "command": "export" }
+  ]
 }

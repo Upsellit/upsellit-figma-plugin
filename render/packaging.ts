@@ -4,6 +4,7 @@ import { analyzeSelection } from '../figma/analyze';
 import { uniqueIds } from '../utils/tree';
 import { ExportFile, NormalizedNode } from '../types';
 import {
+  attachMediaAssets,
   attachProductAssets,
   buildExportBaseName,
   buildExportPackageName,
@@ -11,11 +12,9 @@ import {
   exportMockupPng,
   exportFlattenedBackgroundVariant,
   getAssetThemeSnapshot,
-  getExportPageNodes,
 } from '../figma/index';
 import {
   renderFlattenedHtml,
-  buildUsiJsFile,
   renderMultiExportIndex,
   renderMockupReviewIndex,
   renderPreviewIndex,
@@ -46,53 +45,59 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
   };
 }> {
   const exportBaseName = buildExportBaseName(rootNode);
+  const deliverablesRootFolder = 'deliverables';
   const mockupRootFolder = 'mockups';
   const liveTextRootFolder = 'live_text_images';
   const textBakedRootFolder = 'text_baked_images';
   const nodeIndex = buildNodeIndex(rootNode);
   const analysis = analyzeSelection(rootNode);
   const sourceFrameName = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
-  const pageNodes = getExportPageNodes(rootNode);
   const assetTheme = await getAssetThemeSnapshot();
   const mockupAsset = await exportMockupPng(rootNode, exportBaseName + '_mockup_1x.png');
   const assets = await attachProductAssets(analysis.schema.products, nodeIndex, exportBaseName);
+  const mediaAssets = await attachMediaAssets(analysis.ast, nodeIndex, exportBaseName);
   const flattenedTextAssetName = exportBaseName + '.png';
   const flattenedLiveAssetName = exportBaseName + '.png';
   const flattenedTextAsset = await exportFlattenedBackgroundVariant(
     rootNode,
-    uniqueIds(analysis.dynamicNodeIds),
     [],
-    false,
+    'textBaked',
     flattenedTextAssetName,
     uniqueIds
   );
   const flattenedLiveAsset = await exportFlattenedBackgroundVariant(
     rootNode,
-    uniqueIds(analysis.dynamicNodeIds),
     [],
-    true,
+    'liveText',
     flattenedLiveAssetName,
     uniqueIds
   );
-  const flattenedTextVariant = renderFlattenedHtml(analysis.ast, analysis, '../' + textBakedRootFolder + '/' + flattenedTextAssetName, true);
-  const flattenedLiveVariant = renderFlattenedHtml(analysis.ast, analysis, '../' + liveTextRootFolder + '/' + flattenedLiveAssetName, false);
-  const pageVariants: Array<{ key: string; variant: any; analysis: any }> = [];
-  for (let index = 0; index < pageNodes.length; index += 1) {
-    const pageAnalysis = analyzeSelection(pageNodes[index].node);
-    const pageVariant = renderFlattenedHtml(pageAnalysis.ast, pageAnalysis, '', false);
-    pageVariants.push({
-      key: pageNodes[index].key,
-      variant: pageVariant,
-      analysis: pageAnalysis,
-    });
-  }
-  const usiJsFile = buildUsiJsFile(pageVariants);
+  const flattenedTextVariant = renderFlattenedHtml(
+    analysis.ast,
+    analysis,
+    '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
+    true,
+    '../' + deliverablesRootFolder
+  );
+  const flattenedLiveVariant = renderFlattenedHtml(
+    analysis.ast,
+    analysis,
+    '../' + liveTextRootFolder + '/' + flattenedLiveAssetName,
+    false,
+    '../' + deliverablesRootFolder
+  );
+  const usiJsFile = flattenedLiveVariant.js;
+  const allDeliverableAssets = [...assets, ...mediaAssets].filter(function (asset, index, collection) {
+    return collection.findIndex(function (candidate) {
+      return candidate.name === asset.name;
+    }) === index;
+  });
   const images: Array<{ name: string; href: string }> = [];
   if (mockupAsset) images.push({ name: mockupAsset.name, href: '../' + mockupRootFolder + '/' + mockupAsset.name });
   if (flattenedLiveAsset) images.push({ name: flattenedLiveAsset.name, href: '../' + liveTextRootFolder + '/' + flattenedLiveAsset.name });
   if (flattenedTextAsset) images.push({ name: flattenedTextAsset.name, href: '../' + textBakedRootFolder + '/' + flattenedTextAsset.name });
-  for (let index = 0; index < assets.length; index += 1) {
-    images.push({ name: assets[index].name, href: assets[index].name });
+  for (let index = 0; index < allDeliverableAssets.length; index += 1) {
+    images.push({ name: allDeliverableAssets[index].name, href: '../' + deliverablesRootFolder + '/' + allDeliverableAssets[index].name });
   }
   const previewTitle = rootNode && rootNode.name ? String(rootNode.name) : exportBaseName;
   const formattedDevCss = formatFileText('devmode.css', flattenedTextVariant.css);
@@ -103,7 +108,7 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
     {
       bakedImageHref: '../' + textBakedRootFolder + '/' + flattenedTextAssetName,
       cssSource: formattedDevCss,
-      jsSource: formattedDevJs
+      jsSource: usiJsFile
     }
   );
   console.log(previewHtml);
@@ -138,7 +143,9 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
     ...(mockupAsset ? [rootBinary(mockupRootFolder, mockupAsset)] : []),
     ...(flattenedTextAsset ? [rootBinary(textBakedRootFolder, flattenedTextAsset)] : []),
     ...(flattenedLiveAsset ? [rootBinary(liveTextRootFolder, flattenedLiveAsset)] : []),
-    ...assets.map(prefixedBinary),
+    ...allDeliverableAssets.map(function (asset) {
+      return rootBinary(deliverablesRootFolder, asset);
+    }),
   ];
 
   const formattedFiles: ExportFile[] = files.map(function (file) {
@@ -169,7 +176,7 @@ async function buildExportFilesForNode(rootNode: any, filePrefix: string): Promi
         mockup: mockupAsset ? mockupRootFolder + '/' + mockupAsset.name : undefined,
         flattenedLive: flattenedLiveAsset ? liveTextRootFolder + '/' + flattenedLiveAsset.name : undefined,
         flattenedTextBaked: flattenedTextAsset ? textBakedRootFolder + '/' + flattenedTextAsset.name : undefined,
-        productAssets: assets.map(function (asset) { return asset.name; }),
+        productAssets: allDeliverableAssets.map(function (asset) { return deliverablesRootFolder + '/' + asset.name; }),
         previewPages: ['index.html', 'flattened_live_text.html', 'flattened_text_baked.html'],
         cssFiles: ['css/styles.css', 'css/flattened_live_text.css', 'css/flattened_text_baked.css'],
         jsFiles: ['js/usi_js.js', 'js/flattened_text_baked.js'],

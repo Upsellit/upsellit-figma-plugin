@@ -415,6 +415,44 @@ export async function buildAssetComponentNode(componentId: string): Promise<Scen
       node = grid;
       break;
     }
+    case 'recommendation_grid': {
+      const grid = figma.createFrame();
+      grid.name = 'Recommendation Grid';
+      grid.layoutMode = 'VERTICAL';
+      grid.primaryAxisSizingMode = 'AUTO';
+      grid.counterAxisSizingMode = 'AUTO';
+      grid.itemSpacing = 16;
+      grid.fills = [];
+      applyComponentMeta(grid, componentId);
+      grid.setPluginData('exportCollection', 'products');
+      for (let index = 0; index < 3; index += 1) {
+        grid.appendChild(await buildProductCardFrame(theme));
+      }
+      node = grid;
+      break;
+    }
+    case 'page_left':
+    case 'page_right': {
+      const button = await createButtonFrame(
+        componentId === 'page_left' ? 'Page Left' : 'Page Right',
+        componentId === 'page_left' ? '‹' : '›',
+        componentId,
+        theme,
+        {
+          paddingX: 0,
+          paddingY: 0,
+          background: '#1F5FA8',
+          color: '#FFFFFF',
+          backgroundVariable: theme.button2,
+        }
+      );
+      button.primaryAxisSizingMode = 'FIXED';
+      button.counterAxisSizingMode = 'FIXED';
+      button.resize(32, 32);
+      button.cornerRadius = 16;
+      node = button;
+      break;
+    }
     case 'product_card':
       node = await buildProductCardFrame(theme);
       break;
