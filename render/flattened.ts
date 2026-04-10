@@ -89,10 +89,10 @@ const COMPONENT_RENDERERS: Record<string, ComponentRenderer> = {
 	},
 
 	input: {
-		renderHtml: (node, definition, hideVisibleText) => {
+		renderHtml: (node, definition) => {
 			if (!node || !definition) return "";
 			const text = componentText(node, definition);
-			const placeholder = hideVisibleText ? "" : escapeHtml(text);
+			const placeholder = escapeHtml(text);
 			return `
 			<label class="${definition.render.className}">
 				<span class="usi_field_label usi_sr_only">${escapeHtml(node.name || definition.label)}</span>

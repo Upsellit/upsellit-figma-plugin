@@ -7,6 +7,7 @@ node_modules
 # out/
 # dist/
 # code.js
+templates.txt
 upsellit-modal-templates/
 upsellit-modal-templates.zip
 .vscode
